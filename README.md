@@ -37,7 +37,7 @@ install.packages(packages)
 
 ## Data Sources
 
-- Refinitiv / CEDIF (UNIL) — Coffee futures prices (Arabica & Robusta)
+- Refinitiv / CEDIF (UNIL) — Arabica and Robusta coffee futures, Sugar No.11 and Cocoa NY futures prices
 - FRED (Federal Reserve) — Macroeconomic variables (WTI, CPI, Fed Funds Rate)
 - Investing.com — US Dollar Index (DXY)
 - USDA FAS PSD Online — Supply and demand fundamentals
