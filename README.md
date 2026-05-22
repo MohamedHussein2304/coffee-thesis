@@ -83,3 +83,6 @@ quarto render Mémoire_de_Master_Quarto.qmd
 
 This project is for academic purposes only. Data sources are subject to their 
 respective licenses and terms of use.
+
+## AI Assistance Declaration
+I used Claude.ai (Anthropic) as an AI assistant during the development of this project, primarily to support R code writing, pipeline debugging, and methodological problem-solving. All analytical decisions, interpretations, and written content remain my sole responsibility.
