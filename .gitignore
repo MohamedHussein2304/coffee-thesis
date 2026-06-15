@@ -1,0 +1,31 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.positai
+
+# Données et documents privés
+Datasets mémoire de master/
+Articles académiques/
+Documents Rayane sur le Café/
+Notes meetings/
+Proposition mémoire de master/
+Recherches variables et zones productrices*/
+Références mémoire de master/
+
+# Documents Word et fichiers temporaires/intermédiaires
+*.docx
+*.aux
+*.tex
+*.toc
+nul
+
+# Outputs générés
+output/
+Mémoire_de_Master_Quarto_files/
+Mémoire_de_Master_Quarto.html
+
+*.log
+*.tmp
+RDV*.txt
+*.Rproj
