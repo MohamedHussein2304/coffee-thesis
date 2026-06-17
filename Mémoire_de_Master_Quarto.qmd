@@ -182,7 +182,7 @@ table_vars <- data.frame(
     "Climate", "Climate", "Climate"
   ),
   Variable = c(
-    "Arabica futures price (ICE/NYBOT)",
+    "Arabica futures price (ICE)",
     "Robusta futures price (LIFFE)",
     "Sugar No.11 futures price (ICE)",
     "Cocoa futures price (ICE NY)",
@@ -250,7 +250,7 @@ Two data availability constraints deserve explicit acknowledgement. First, Robus
 
 ## Dependent Variables: Coffee Futures Prices
 
-The two dependent variables are the monthly average closing prices of Arabica coffee futures traded on the ICE Futures U.S. exchange (NYBOT, contract code KCc) and Robusta coffee futures traded on the London International Financial Futures Exchange (LIFFE, contract code RCc). Both series are extracted from Refinitiv Eikon via the CEDIF data facility at UNIL, which constitutes the primary source for price data in this study. Arabica and Robusta are treated as two distinct dependent variables and modelled separately throughout the analysis, reflecting their different market structures, consumer bases and price determinants. A combined coffee price index is not constructed, as aggregation would obscure the variety-specific dynamics that this study aims to capture.
+The two dependent variables are the monthly average closing prices of Arabica coffee futures traded on ICE Futures U.S. (contract symbol KC) and Robusta coffee futures traded on ICE Futures Europe, the former London International Financial Futures Exchange (contract symbol RC). Both series are extracted from Refinitiv via the CEDIF data facility at the University of Lausanne, which constitutes the primary source for price data in this study. Arabica and Robusta are treated as two distinct dependent variables and modelled separately throughout the analysis, reflecting their different market structures, consumer bases and price determinants. A combined coffee price index is not constructed, as aggregation would obscure the variety-specific dynamics that this study aims to capture.
 
 Daily closing prices are aggregated to monthly frequency by computing the arithmetic mean of all trading days within each calendar month. This averaging approach is preferred to using the last trading day's price because it is less sensitive to end-of-month volatility spikes associated with contract rollovers, and more representative of the price environment faced by market participants throughout the month.
 
@@ -1850,7 +1850,7 @@ The Commitments of Traders (COT) report is a weekly publication of the Commodity
 
 This study uses the Disaggregated Futures-Only report, which divides market participants into four categories: Producer/Merchant/Processor/User (physical commercials), Swap Dealers, Managed Money (speculative funds) and Other Reportables. The Managed Money category encompasses commodity trading advisors, commodity pool operators and hedge funds that hold positions for speculative or investment purposes. This disaggregation was introduced by the CFTC in 2009 (with historical data backdated to June 2006) and is preferred over the legacy Commitments of Traders report because it provides a more precise separation between commercial and non-commercial participants.
 
-The variable constructed is the net position of the Managed Money category on the Coffee C contract (ICE Futures U.S., ticker KCc):
+The variable constructed is the net position of the Managed Money category on the Coffee C contract (ICE Futures U.S., contract symbol KC):
 
 $$\text{Net}_{MM}(t) = \text{Long}_{MM}(t) - \text{Short}_{MM}(t)$$
 
@@ -2369,7 +2369,7 @@ This chunk produces the first of two time series overview panels, covering the t
 # ----------------------------------------------------------
 p_arabica <- ggplot(dataset_mensuel, aes(date_fmt, prix_arabica)) +
   geom_line(color = "#8B4513", linewidth = 0.7) +
-  labs(title = "Arabica futures (ICE/NYBOT)", x = NULL, y = "USD/lb") +
+  labs(title = "Arabica futures (ICE)", x = NULL, y = "USD/lb") +
   theme_minimal(base_size = 10) +
   scale_x_date(date_breaks = "4 years", date_labels = "%Y")
 
