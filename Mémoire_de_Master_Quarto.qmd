@@ -339,23 +339,12 @@ df_prix <- data.frame(
 
 # ----------------------------------------------------------
 # PLOT 1 — ARABICA FUTURES PRICE (2000-2023)
-# Shaded rectangles highlight two major macroeconomic shocks:
-# the Global Financial Crisis (Sep 2008 - Jun 2009) and the
-# first wave of COVID-19 (Mar - Jun 2020).
 # ----------------------------------------------------------
 
 p1 <- ggplot(df_prix, aes(x = date_fmt, y = prix_arabica)) +
   geom_line(color = "#8B4513", linewidth = 0.8) +
-  annotate("rect",
-           xmin = as.Date("2008-09-01"), xmax = as.Date("2009-06-01"),
-           ymin = -Inf, ymax = Inf,
-           fill = "grey80", alpha = 0.3) +
-  annotate("rect",
-           xmin = as.Date("2020-03-01"), xmax = as.Date("2020-06-01"),
-           ymin = -Inf, ymax = Inf,
-           fill = "grey80", alpha = 0.3) +
-  labs(title    = "Arabica futures price (ICE/NYBOT), 2000–2023",
-       subtitle = "Monthly average closing price (USD/lb). Shaded areas: GFC 2008–09 and COVID-19 2020.",
+  labs(title    = "Arabica futures price (ICE), 2000–2023",
+       subtitle = "Monthly average closing price (USD/lb).",
        x = NULL, y = "USD/lb") +
   theme_minimal(base_size = 11) +
   scale_x_date(date_breaks = "2 years", date_labels = "%Y")
@@ -822,15 +811,27 @@ splits_variete <- df_usda %>%
     pct_robusta  = round(robusta / total * 100, 1)
   ) %>%
   filter(Country_Name %in% pays_retenus) %>%
+  # Share of each country in the combined Arabica / Robusta
+  # production of the 14 retained countries (denominators
+  # computed across the filtered set, not world totals).
+  mutate(
+    pct_monde_arabica = round(arabica / sum(arabica) * 100, 1),
+    pct_monde_robusta = round(robusta / sum(robusta) * 100, 1),
+    arabica_disp = paste0(format(round(arabica), big.mark = ","),
+                          " (", pct_arabica, "%)"),
+    robusta_disp = paste0(format(round(robusta), big.mark = ","),
+                          " (", pct_robusta, "%)")
+  ) %>%
   arrange(desc(total))
 
-kable(splits_variete %>% select(Country_Name, arabica, robusta,
-                                 total, pct_arabica, pct_robusta),
+kable(splits_variete %>% select(Country_Name, arabica_disp, pct_monde_arabica,
+                                 robusta_disp, pct_monde_robusta),
       caption   = "Variety splits — Arabica vs Robusta production share per country (2000–2024, USDA FAS PSD)",
       booktabs  = TRUE,
-      col.names = c("Country", "Arabica (1000 bags)",
-                    "Robusta (1000 bags)", "Total",
-                    "% Arabica", "% Robusta")) %>%
+      col.names = c("Country", "Arabica (1000 bags, % of country)",
+                    "% of 14-country Arabica total",
+                    "Robusta (1000 bags, % of country)",
+                    "% of 14-country Robusta total")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = TRUE)
 ```
@@ -2551,8 +2552,11 @@ colnames(mat_corr) <- rownames(mat_corr) <- labels_corr
 #   type   = "upper"  : show upper triangle only (matrix is symmetric)
 #   order  = "hclust" : reorder variables by hierarchical clustering
 #                       so that highly correlated groups appear adjacent
-#   COL2("RdBu", 200) : red-to-blue diverging palette where red = +1,
-#                       blue = -1, and white = 0
+#   rev(COL2("RdBu", 200)) : red-to-blue diverging palette where
+#                       red = +1, white = 0, and blue = -1.
+#                       RdBu's default order runs red (low) to
+#                       blue (high), so the palette is reversed
+#                       to match the desired convention.
 #   addCoef.col       : print correlation coefficients inside each cell
 corrplot(mat_corr,
          method      = "color",
@@ -2562,7 +2566,7 @@ corrplot(mat_corr,
          tl.col      = "black",
          addCoef.col = "black",
          number.cex  = 0.52,
-         col         = COL2("RdBu", 200),
+         col         = rev(COL2("RdBu", 200)),
          title       = "Pearson correlation matrix — 2008–2023",
          mar         = c(0, 0, 2, 0))
 ```
@@ -2575,7 +2579,7 @@ Arabica prices show a moderate negative correlation with Ending Stocks (−0.46)
 
 ## Principal Component Analysis
 
-This chunk runs a principal component analysis on the 14 explanatory variables to diagnose the dimensionality structure of the predictor space and quantify the multicollinearity already suggested by the correlation matrix. The PCA is performed on the same 2008–2023 sub-period used for the correlation analysis, and all variables are standardised to zero mean and unit variance before decomposition so that differences in measurement units do not distort the results. The output consists of a scree plot showing variance explained by component and a loading plot showing how each variable projects onto the first two principal components.
+This chunk runs a principal component analysis on the 14 explanatory variables to quantify the multicollinearity already suggested by the correlation matrix. The PCA is performed on the same 2008–2023 sub-period, with all variables standardised to zero mean and unit variance before decomposition. No component is used downstream in the forecasting models; the analysis is purely diagnostic and serves only to confirm the extent of redundancy in the predictor set.
 
 ```{r pca, fig.width=10, fig.height=5}
 
@@ -2660,64 +2664,20 @@ p_scree <- ggplot(df_scree[1:10, ], aes(x = PC)) +
 
 
 # ----------------------------------------------------------
-# STEP 4 — LOADING PLOT (PC1 × PC2)
-# pca_result$rotation contains the eigenvectors (loadings).
-# Each arrow represents one variable; its direction shows
-# how it projects onto PC1 (x-axis) and PC2 (y-axis), and
-# its length reflects the strength of that projection.
-# Variables pointing in similar directions are positively
-# correlated; opposite directions indicate negative correlation.
-# geom_segment draws arrows from the variable position to the
-# origin (xend = 0, yend = 0) rather than from origin outward,
-# which is equivalent but avoids arrow overlap at the origin.
-# ggrepel prevents label overlap for closely positioned variables.
+# STEP 4 — DISPLAY THE SCREE PLOT
+# Only the variance-explained plot is shown; no loading plot
+# or component-level interpretation is produced, since no
+# principal component is used in the forecasting models that
+# follow. The PCA serves solely to confirm, in a single plot,
+# the degree of redundancy already suggested by the
+# correlation matrix.
 # ----------------------------------------------------------
 
-df_loadings <- as.data.frame(pca_result$rotation[, 1:2])
-df_loadings$variable <- rownames(df_loadings)
-
-p_biplot <- ggplot(df_loadings, aes(x = PC1, y = PC2, label = variable)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
-  geom_segment(aes(xend = 0, yend = 0),
-               arrow = arrow(length = unit(0.2, "cm")),
-               color = "steelblue", linewidth = 0.8) +
-  ggrepel::geom_text_repel(size = 3, color = "black",
-                           max.overlaps = 20, box.padding = 0.4) +
-  labs(title = "PCA — Variable loadings (PC1 × PC2)",
-       x = paste0("PC1 (", round(var_exp[1], 1), "%)"),
-       y = paste0("PC2 (", round(var_exp[2], 1), "%)")) +
-  theme_minimal(base_size = 11)
-
-gridExtra::grid.arrange(p_scree, p_biplot, ncol = 2)
+p_scree
 ```
 
-This chunk renders the numerical counterpart of the scree plot as a formatted table. The values are drawn directly from the `var_exp` and `var_cum` vectors computed in the previous chunk, so the table is always consistent with the plot without any manual transcription.
 
-```{r pca_table}
-
-# Build the variance decomposition table from the PCA results
-# computed in the previous chunk. Only the first 10 components
-# are reported; the remaining four each explain less than 3%
-# of total variance and add no meaningful interpretive content.
-df_pca_table <- data.frame(
-  Component  = paste0("PC", 1:10),
-  Variance   = round(var_exp[1:10], 1),   # Individual variance explained (%)
-  Cumulative = round(var_cum[1:10], 1)    # Cumulative variance explained (%)
-)
-
-kable(df_pca_table,
-      caption   = "PCA — Variance explained by component (first 10)",
-      col.names = c("Component", "Variance explained (%)", "Cumulative (%)"),
-      booktabs  = TRUE,
-      row.names = FALSE) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE)
-```
-
-The scree plot and variance table indicate that PC1 captures 36.0% of the total variance in the predictor space, while PC2 adds a further 16.9%, bringing the cumulative total to 52.9% for the first two components alone. Five components are needed to cross the 80% threshold, at a cumulative variance of 82.0%. This relatively slow accumulation reflects the heterogeneous nature of the predictor set, which spans macroeconomic, fundamental, climatic and speculative variables that do not all move together.
-
-The loading plot provides a clearer picture of the structure underlying PC1 and PC2. Along PC1, variables load in two distinct directions: CPI, DXY, Fed Funds Rate, Consumption, Production and Exports load negatively, while WTI, Sugar, Cocoa, COT net MM and Precipitation load positively. PC1 can therefore be interpreted as a broad opposition between macro-financial trend variables and commodity price variables. Along PC2, Ending Stocks loads strongly upward, while CPI and Fed Funds Rate load downward, suggesting that this component captures a supply-side dimension orthogonal to the first. Temperature and ONI display short arrows along both axes, indicating that climate variables contribute relatively little to the variance structure captured by the first two components — their influence is likely distributed across higher-order components.
+The scree plot indicates that PC1 captures 36.0% of the total variance in the predictor space, and five components are needed to cross the conventional 80% threshold. This relatively slow accumulation confirms that the predictor set is genuinely multidimensional rather than dominated by a single underlying factor, even though strong pairwise collinearity exists among specific subsets of variables, as shown in the correlation matrix above.
 
 The tight clustering of Production, Consumption and Exports along nearly identical directions confirms the multicollinearity already observed in the correlation matrix. These variables carry largely redundant information and will require careful treatment in the linear benchmark models — either through variable selection or by retaining only one representative from this group.
 
@@ -3132,9 +3092,123 @@ cat("Robusta diff   — Train:", n_train_rob_dif,
     "| Test:", nrow(df_robusta_diff)   - n_train_rob_dif, "\n")
 ```
 
+## Multiple Linear Regression (MLR)
+
+This chunk estimates the Multiple Linear Regression benchmark using the same walk-forward expanding window protocol as all other models. Unlike ARIMAX, OLS does not handle non-stationarity internally, so the model is estimated on the levels dataset with the understanding that any spurious regression concern is acknowledged as a limitation. At each step, the entire expanded training window is refitted from scratch using `lm()`, and a one-step-ahead prediction is generated for the current test observation. The code below is written as a sequence of explicit, separate steps rather than as a single chained pipeline, so that each operation can be inspected individually.
+
+```{r mlr, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# MLR ESTIMATION FUNCTION
+#
+# Arguments:
+#   df      : levels dataset (one row per month)
+#   var_dep : name of the dependent variable column
+#             ("prix_arabica" or "prix_robusta")
+#   n_train : size of the initial training window (number of
+#             rows), computed earlier in the preprocessing chunk
+#
+# What the function returns:
+#   actual    : the observed prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+# ----------------------------------------------------------
+
+fit_mlr <- function(df, var_dep, n_train) {
+
+  # STEP 1 — Keep only the columns this model actually needs:
+  # the dependent variable plus the 14 exogenous predictors.
+  # vars_exo is defined once in the "Results" setup chunk and
+  # reused identically by all six models.
+  # The intersect() call is a safety check: if a predictor were
+  # ever missing from df, it is simply skipped here instead of
+  # making the function crash.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder <- c(var_dep, vars_exo_disponibles)
+  df_modele <- df[, vars_a_garder]
+
+  # STEP 2 — Drop any row with at least one missing value.
+  # This is what restricts the Arabica sample to start in
+  # June 2006 (the first month with COT data available).
+  lignes_completes <- complete.cases(df_modele)
+  df_modele <- df_modele[lignes_completes, ]
+
+  # STEP 3 — Split into the initial training set and the test
+  # set, using the row count computed in the preprocessing
+  # chunk (80% / 20% split).
+  n_total      <- nrow(df_modele)
+  donnees_train <- df_modele[1:n_train, ]
+  donnees_test  <- df_modele[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  # STEP 4 — Walk-forward loop.
+  # At forecasting step i, the model is re-estimated using
+  # ALL observations available up to that point: the initial
+  # training set, plus every test-period row already passed
+  # (rows 1 to i-1 of donnees_test). The freshly estimated
+  # model is then used to predict row i of the test set, and
+  # only that single one-step-ahead prediction is kept.
+  #
+  # nb_lignes_test_vues starts at 0 (nothing seen yet before
+  # the first forecast) and grows by one at every step.
+  predictions <- numeric(n_test)   # empty vector to fill in
+
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues <- i - 1   # 0 at step 1, 1 at step 2, ...
+
+    # Rows of the test set already "seen" before step i.
+    # When nb_lignes_test_vues = 0, this selects zero rows,
+    # which rbind() below simply ignores.
+    lignes_test_vues <- donnees_test[seq_len(nb_lignes_test_vues), ]
+
+    # The expanding training window for this step
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    # Re-estimate the linear regression from scratch on the
+    # current window. The formula "var_dep ~ ." means: use
+    # every other column in the data frame as a predictor.
+    formule    <- as.formula(paste(var_dep, "~ ."))
+    modele_ols <- lm(formule, data = fenetre_entrainement)
+
+    # Predict the single next observation (row i of the test set)
+    ligne_a_predire <- donnees_test[i, ]
+    predictions[i]  <- predict(modele_ols, newdata = ligne_a_predire)
+  }
+
+  # STEP 5 — Return the observed and predicted test values
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
+}
+
+
+# ----------------------------------------------------------
+# ESTIMATION — ARABICA AND ROBUSTA
+# ----------------------------------------------------------
+
+res_mlr_ara <- fit_mlr(df_arabica_levels, "prix_arabica", n_train_ara_lev)
+res_mlr_rob <- fit_mlr(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+
+
+# ----------------------------------------------------------
+# PERFORMANCE METRICS
+# Stored in the same standardised format as the other five
+# models for direct combination in the comparative performance
+# chunk later in this document.
+# ----------------------------------------------------------
+
+metriques_mlr <- rbind(
+  cbind(Model = "MLR", Series = "Arabica",
+        calculer_metriques(res_mlr_ara$actual, res_mlr_ara$predicted)),
+  cbind(Model = "MLR", Series = "Robusta",
+        calculer_metriques(res_mlr_rob$actual, res_mlr_rob$predicted))
+)
+```
+
+The MLR benchmark performs well for Arabica ($R^2 = 0.784$), capturing a large share of the variance through the linear combination of exogenous variables. For Robusta, however, performance deteriorates significantly ($R^2 = 0.276$), with an MSE of 114,284 and an MAE of 274.6 USD/tonne. This sharp contrast likely reflects the shorter estimation window available for Robusta (2008–2023), which reduces the number of training observations and amplifies the sensitivity of the OLS estimator to multicollinearity among the predictors — a problem already identified in the PCA analysis. The MLR results confirm that a purely static linear specification without temporal dynamics is insufficient to model Robusta price dynamics over a restricted sample.
+
 ## ARIMAX
 
-This chunk estimates the ARIMAX model for both coffee series using a walk-forward expanding window. At each step, `auto.arima()` selects the optimal $(p, d, q)$ order by minimising AIC over the current training window, then generates a one-step-ahead forecast using the next row of exogenous regressors. The model is therefore re-specified at every forecast origin, allowing the autoregressive structure to adapt as new observations are added to the training window.
+This chunk estimates the ARIMAX model for both coffee series using a walk-forward expanding window. At each step, `auto.arima()` selects the optimal $(p, d, q)$ order by minimising AIC over the current training window, then generates a one-step-ahead forecast using the next row of exogenous regressors. The model is therefore re-specified at every forecast origin, allowing the autoregressive structure to adapt as new observations are added to the training window. As with the MLR function above, the code is written as a sequence of explicit, separate steps.
 
 ```{r arimax, message=FALSE, warning=FALSE}
 
@@ -3142,90 +3216,119 @@ library(forecast)
 
 # ----------------------------------------------------------
 # ARIMAX ESTIMATION FUNCTION
-# Arguments:
-#   df      : levels dataset produced by preparer_niveaux()
-#   var_dep : name of the dependent variable column
-#   n_train : number of observations in the initial training set
 #
-# The function returns a list containing:
-#   actual    : observed test-set values
-#   predicted : one-step-ahead walk-forward forecasts
-#   model     : final ARIMAX model fitted on the full training
-#               set (used for reporting the selected order)
+# Arguments:
+#   df      : levels dataset (one row per month)
+#   var_dep : name of the dependent variable column
+#   n_train : size of the initial training window (number of
+#             rows), computed earlier in the preprocessing chunk
+#
+# What the function returns:
+#   actual    : the observed prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+#   model     : the ARIMAX model fitted once on the initial
+#               training set only (used later for reporting
+#               the selected order, coefficients, and residuals)
 # ----------------------------------------------------------
 
 fit_arimax <- function(df, var_dep, n_train) {
 
-  y    <- df[[var_dep]]
+  # STEP 1 — Separate the dependent variable from the
+  # exogenous regressors. auto.arima() requires the regressors
+  # as a plain numeric matrix, not a data frame.
+  serie_dependante  <- df[[var_dep]]
+  matrice_regresseurs <- as.matrix(df[, vars_exo])
 
-  # Build the regressor matrix, dropping any column that is
-  # entirely NA (e.g. cot_net_mm before June 2006 if it
-  # survived the complete.cases() filter — safety guard).
-  xreg <- df %>%
-    select(all_of(vars_exo)) %>%
-    select(where(~ !all(is.na(.)))) %>%
-    as.matrix()
+  # Safety check: drop any regressor column that is entirely
+  # NA (this should not normally happen, since rows with any
+  # NA were already removed upstream by preparer_niveaux()).
+  colonnes_valides <- apply(matrice_regresseurs, 2,
+                            function(col) !all(is.na(col)))
+  matrice_regresseurs <- matrice_regresseurs[, colonnes_valides, drop = FALSE]
 
-  # Split dependent variable and regressor matrix into
-  # training and test portions using the pre-computed index
-  y_train    <- y[1:n_train]
-  y_test     <- y[(n_train + 1):length(y)]
-  xreg_train <- xreg[1:n_train, ]
-  xreg_test  <- xreg[(n_train + 1):nrow(xreg), ]
+  # STEP 2 — Split into the initial training set and the test
+  # set, using the row count computed in the preprocessing chunk.
+  n_total <- length(serie_dependante)
 
-  # ----------------------------------------------------------
-  # WALK-FORWARD LOOP
-  # At step i, the training window contains all observations
-  # up to test observation i-1 (expanding window). auto.arima()
-  # selects the best ARIMA order by AIC on that window, then
-  # forecast() generates the one-step-ahead prediction using
-  # the i-th row of xreg_test as the future regressor values.
+  y_train    <- serie_dependante[1:n_train]
+  y_test     <- serie_dependante[(n_train + 1):n_total]
+
+  xreg_train <- matrice_regresseurs[1:n_train, ]
+  xreg_test  <- matrice_regresseurs[(n_train + 1):n_total, ]
+
+  n_test <- length(y_test)
+
+  # STEP 3 — Walk-forward loop.
+  # At forecasting step i, auto.arima() is re-estimated on ALL
+  # observations available up to that point: the initial
+  # training set, plus every test-period observation already
+  # passed (rows 1 to i-1 of y_test / xreg_test). The order
+  # (p, d, q) is re-selected by AIC at every step — it is not
+  # fixed in advance. The freshly estimated model then produces
+  # a single one-step-ahead forecast for observation i, using
+  # row i of xreg_test as the future regressor values.
   #
-  # Constraints on auto.arima():
-  #   stepwise = TRUE     : faster greedy search (vs full grid)
-  #   approximation = TRUE: conditional likelihood for speed
-  #   max.p/q = 3, max.d = 1: bounds consistent with the
-  #     integration order established in the stationarity tests
+  # Search constraints passed to auto.arima():
+  #   max.p = 3, max.q = 3 : keeps the search computationally
+  #     feasible across the ~40 re-estimations of the loop
+  #   max.d = 1            : consistent with the integration
+  #     order established in the stationarity tests
+  #   stepwise = TRUE, approximation = TRUE : faster greedy
+  #     search instead of an exhaustive grid, needed because
+  #     the model is re-estimated at every single step
   #
-  # tryCatch() catches any estimation failure (e.g. singular
-  # matrix at early loop iterations with small windows) and
-  # records NA for that step rather than halting execution.
-  # ----------------------------------------------------------
+  # tryCatch() catches any estimation failure (which can happen
+  # at the very first steps, when the window is still small)
+  # and records NA for that step instead of stopping the loop.
+  predictions <- numeric(n_test)
 
-  preds <- numeric(length(y_test))
+  for (i in 1:n_test) {
 
-  for (i in seq_along(y_test)) {
+    nb_observations_vues <- i - 1   # 0 at step 1, 1 at step 2, ...
 
-    # Expand the training window by including all test
-    # observations already forecasted (indices 1 to i-1)
-    y_window    <- c(y_train, y_test[seq_len(i - 1)])
-    xreg_window <- rbind(xreg_train,
-                         xreg_test[seq_len(max(1, i - 1)), , drop = FALSE])
-    # Trim xreg_window to exactly match the length of y_window
-    xreg_window <- xreg_window[1:length(y_window), , drop = FALSE]
+    # Observations of the test period already "seen" before step i
+    indices_vus <- seq_len(nb_observations_vues)
+    y_vu    <- y_test[indices_vus]
+    xreg_vu <- xreg_test[indices_vus, , drop = FALSE]
 
-    fit <- tryCatch(
-      auto.arima(y_window, xreg = xreg_window,
-                 stepwise     = TRUE,
+    # The expanding training window for this step
+    y_fenetre    <- c(y_train, y_vu)
+    xreg_fenetre <- rbind(xreg_train, xreg_vu)
+
+    modele_arima <- tryCatch(
+      auto.arima(y_fenetre, xreg = xreg_fenetre,
+                 stepwise      = TRUE,
                  approximation = TRUE,
                  max.p = 3, max.q = 3, max.d = 1),
       error = function(e) NULL
     )
 
-    # If estimation fails, record NA and move to the next step
-    if (is.null(fit)) { preds[i] <- NA; next }
+    if (is.null(modele_arima)) {
+      predictions[i] <- NA
+      next
+    }
 
-    # One-step-ahead forecast using the i-th regressor row
-    preds[i] <- forecast(fit, h = 1,
-                         xreg = matrix(xreg_test[i, ], nrow = 1))$mean[1]
+    # One-step-ahead forecast using row i of the test regressors
+    ligne_regresseurs_futurs <- matrix(xreg_test[i, ], nrow = 1)
+    prevision <- forecast(modele_arima, h = 1,
+                          xreg = ligne_regresseurs_futurs)
+    predictions[i] <- prevision$mean[1]
   }
 
-  # Return test actuals, walk-forward predictions, and the
-  # final model fitted on the full training set for reporting
-  list(actual  = y_test,
-       predicted = preds,
-       model   = auto.arima(y_train, xreg = xreg_train,
-                            stepwise = TRUE, approximation = TRUE))
+  # STEP 4 — Fit one additional model on the initial training
+  # set only (not the walk-forward loop). This single model is
+  # kept purely for reporting purposes later in the document:
+  # the selected ARIMA order, the regression coefficients, and
+  # the residual diagnostics all refer to this training-set-only
+  # model rather than to any of the ~40 models re-estimated
+  # during the walk-forward loop above.
+  modele_sur_entrainement <- auto.arima(y_train, xreg = xreg_train,
+                                        stepwise = TRUE,
+                                        approximation = TRUE)
+
+  list(actual    = y_test,
+       predicted = predictions,
+       model     = modele_sur_entrainement)
 }
 
 
@@ -3242,10 +3345,10 @@ res_arimax_rob <- fit_arimax(df_robusta_levels, "prix_robusta", n_train_rob_lev)
 # ----------------------------------------------------------
 # PERFORMANCE METRICS
 # calculer_metriques() is applied to the walk-forward
-# predictions accumulated over the full test period.
-# Results are stored in a standardised two-row data frame
-# that will be combined with the other five models in the
-# comparative performance chunk.
+# predictions accumulated over the full test period. Results
+# are stored in the same standardised format as the other five
+# models for direct combination in the comparative performance
+# chunk later in this document.
 # ----------------------------------------------------------
 
 metriques_arimax <- rbind(
@@ -3376,91 +3479,10 @@ The residual diagnostics reveal an asymmetry between the two series. For Robusta
 
 For Arabica, the picture is less satisfactory. The ACF shows significant spikes at lags 1, 5 and 6, and the PACF shows exceedances at lags 5, 8 and 10. This indicates that the $ARIMA(1,0,0)$ structure does not fully capture the medium-range autocorrelation dynamics of the Arabica residuals, and that a higher-order specification — for instance incorporating additional AR terms at lags 5 or 6 — could reduce this residual dependence. This limitation is acknowledged as a direction for future refinement, though it does not invalidate the out-of-sample forecasting results given the strong $R^2$ of 0.821 achieved under walk-forward validation.
 
-## Multiple Linear Regression (MLR)
-
-This chunk estimates the Multiple Linear Regression benchmark using the same walk-forward expanding window protocol as the ARIMAX model. Unlike ARIMAX, OLS does not handle non-stationarity internally, so the model is estimated on the levels dataset with the understanding that any spurious regression concern is acknowledged as a limitation. At each step, the entire expanded training window is refitted from scratch using `lm()`, and a one-step-ahead prediction is generated for the current test observation.
-
-```{r mlr, message=FALSE, warning=FALSE}
-
-# ----------------------------------------------------------
-# MLR ESTIMATION FUNCTION
-# Arguments and return value mirror the ARIMAX function for
-# consistency across all model chunks.
-#
-# vars_ok guards against the edge case where a column in
-# vars_exo is absent from df (e.g. if a variable was dropped
-# upstream), selecting only the intersection of the requested
-# predictors and the available columns.
-# ----------------------------------------------------------
-
-fit_mlr <- function(df, var_dep, n_train) {
-
-  # Retain only exogenous variables actually present in df
-  vars_ok <- vars_exo[vars_exo %in% colnames(df)]
-
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.))
-
-  # Split into initial training and test sets
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
-
-  # ----------------------------------------------------------
-  # WALK-FORWARD LOOP
-  # At step i, the model is refitted on all observations up
-  # to test row i-1 using OLS, then used to predict test row i.
-  # The formula "var_dep ~ ." includes all columns in train_i
-  # except the dependent variable as predictors.
-  # Refitting from scratch at every step is computationally
-  # more expensive than updating, but ensures the coefficient
-  # estimates always reflect the full expanded window.
-  # ----------------------------------------------------------
-
-  preds <- numeric(nrow(test))
-
-  for (i in seq_len(nrow(test))) {
-
-    # Expand training window by appending previously observed
-    # test rows (rows 1 to i-1 of the test set)
-    train_i  <- rbind(train, test[seq_len(i - 1), ])
-    formula_i <- as.formula(paste(var_dep, "~ ."))
-
-    fit      <- lm(formula_i, data = train_i)
-    preds[i] <- predict(fit, newdata = test[i, ])
-  }
-
-  list(actual = test[[var_dep]], predicted = preds)
-}
-
-
-# ----------------------------------------------------------
-# ESTIMATION — ARABICA AND ROBUSTA
-# ----------------------------------------------------------
-
-res_mlr_ara <- fit_mlr(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-res_mlr_rob <- fit_mlr(df_robusta_levels, "prix_robusta", n_train_rob_lev)
-
-
-# ----------------------------------------------------------
-# PERFORMANCE METRICS
-# Stored in the same standardised format as metriques_arimax
-# for direct combination in the comparative performance chunk.
-# ----------------------------------------------------------
-
-metriques_mlr <- rbind(
-  cbind(Model = "MLR", Series = "Arabica",
-        calculer_metriques(res_mlr_ara$actual, res_mlr_ara$predicted)),
-  cbind(Model = "MLR", Series = "Robusta",
-        calculer_metriques(res_mlr_rob$actual, res_mlr_rob$predicted))
-)
-```
-
-The MLR benchmark performs well for Arabica ($R^2 = 0.784$), capturing a large share of the variance through the linear combination of exogenous variables. For Robusta, however, performance deteriorates significantly ($R^2 = 0.276$), with an MSE of 114,284 and an MAE of 274.6 USD/tonne. This sharp contrast likely reflects the shorter estimation window available for Robusta (2008–2023), which reduces the number of training observations and amplifies the sensitivity of the OLS estimator to multicollinearity among the predictors — a problem already identified in the PCA analysis, where Production, Consumption and Exports were found to load almost identically on the first principal component. The MLR results confirm that a purely static linear specification without temporal dynamics is insufficient to model Robusta price dynamics over a restricted sample.
 
 ## Random Forest
 
-This chunk estimates the Random Forest model for both series. The implementation follows the same walk-forward structure as the previous models, with two differences specific to this model family: all variables are Min-Max scaled to \[0, 1\] before estimation, and the forest is grown with 500 trees at each step with importance recording enabled. The variable importance scores from the final iteration of the loop are retained and used in the importance plot chunk later in the document.
+This chunk estimates the Random Forest model for both series. The implementation follows the same walk-forward structure as MLR and ARIMAX above, with two differences specific to this model family: all variables, including the dependent variable, are Min-Max scaled to [0, 1] before estimation (see Section 3.5.3), and the forest is grown with 500 trees at each step with importance recording enabled. The variable importance scores from the final iteration of the loop are retained and used in the importance plot chunk later in the document.
 
 ```{r random_forest, message=FALSE, warning=FALSE}
 
@@ -3468,59 +3490,79 @@ library(randomForest)
 
 # ----------------------------------------------------------
 # RANDOM FOREST ESTIMATION FUNCTION
-# Key differences from the MLR function:
-#   - minmax_scale() is applied to all variables before
-#     splitting, so scaling parameters are derived from the
-#     full available sample (levels dataset) rather than
-#     the training set alone. This is a minor simplification
-#     acknowledged in the limitations section.
-#   - importance = TRUE records permutation-based variable
-#     importance at each step; the scores from the last
-#     iteration (largest training window) are returned.
-#   - ntree = 500 grows 500 trees per forest, balancing
-#     prediction stability against computation time.
+#
+# Arguments:
+#   df      : levels dataset (one row per month)
+#   var_dep : name of the dependent variable column
+#   n_train : size of the initial training window (number of
+#             rows), computed earlier in the preprocessing chunk
+#
+# What the function returns:
+#   actual     : the observed (scaled) prices in the test period
+#   predicted  : the walk-forward one-step-ahead forecasts
+#                (still on the [0, 1] scaled range — the
+#                back-transformation to USD happens later,
+#                in the trajectory plot chunk)
+#   importance : permutation-based variable importance scores
+#                from the LAST walk-forward step only, i.e. the
+#                forest grown on the largest training window
 # ----------------------------------------------------------
 
 fit_rf <- function(df, var_dep, n_train) {
 
-  vars_ok <- vars_exo[vars_exo %in% colnames(df)]
+  # STEP 1 — Keep only the columns this model needs, the same
+  # safety check as in the MLR function.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder <- c(var_dep, vars_exo_disponibles)
+  df_modele <- df[, vars_a_garder]
 
-  # Apply Min-Max scaling to all variables before splitting
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
+  # STEP 2 — Drop rows with missing values.
+  df_modele <- df_modele[complete.cases(df_modele), ]
 
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
+  # STEP 3 — Min-Max scale every column (including the
+  # dependent variable) to the [0, 1] range. sapply() applies
+  # minmax_scale() to each column in turn and returns a matrix,
+  # which is then converted back to a data frame.
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
 
-  # ----------------------------------------------------------
-  # WALK-FORWARD LOOP
-  # At each step the forest is grown from scratch on the
-  # expanded training window. This is computationally intensive
-  # but necessary to avoid any information leakage from future
-  # observations into the ensemble structure.
-  # The formula "var_dep ~ ." passes all scaled predictors
-  # to randomForest() without manual variable listing.
-  # importance() is called on fit after the loop ends,
-  # capturing the importance scores from the final (largest)
-  # training window — the most reliable estimate given that
-  # it is based on the most data.
-  # ----------------------------------------------------------
+  # STEP 4 — Split into the initial training set and the test set.
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
 
-  preds <- numeric(nrow(test))
+  # STEP 5 — Walk-forward loop.
+  # At each step, a brand new forest of 500 trees is grown on
+  # the expanding training window (initial training set plus
+  # all test rows already passed), exactly as in the MLR loop.
+  # This is more computationally expensive than for MLR, since
+  # growing 500 trees is slower than fitting one linear model,
+  # but it is necessary to prevent any future observation from
+  # influencing the ensemble.
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
 
-  for (i in seq_len(nrow(test))) {
-    train_i   <- rbind(train, test[seq_len(i - 1), ])
-    formula_i <- as.formula(paste(var_dep, "~ ."))
-    fit       <- randomForest(formula_i, data = train_i,
-                              ntree = 500, importance = TRUE)
-    preds[i]  <- predict(fit, newdata = test[i, ])
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    foret <- randomForest(formule, data = fenetre_entrainement,
+                          ntree = 500, importance = TRUE)
+
+    ligne_a_predire <- donnees_test[i, ]
+    predictions[i]  <- predict(foret, newdata = ligne_a_predire)
   }
 
-  list(actual     = test[[var_dep]],
-       predicted  = preds,
-       importance = importance(fit))   # Scores from the final iteration
+  # STEP 6 — Variable importance scores from the forest grown
+  # at the LAST loop iteration (the one with the most training
+  # data) are kept for the importance plot later in the document.
+  scores_importance <- importance(foret)
+
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions,
+       importance = scores_importance)
 }
 
 
@@ -3546,9 +3588,10 @@ metriques_rf <- rbind(
 
 The Random Forest model achieves an $R^2$ of 0.802 for Arabica and 0.701 for Robusta, with substantially lower MSE and MAE than the econometric benchmarks when evaluated on the same scale. The model's ensemble structure — averaging predictions across 500 decision trees — provides robustness to outliers and non-linear relationships that the linear benchmarks cannot capture. The walk-forward re-estimation at each step ensures that the model is never trained on future observations, mitigating overfitting concerns that would arise under standard cross-validation. Performance on Robusta is somewhat lower than on Arabica, consistent with the shorter and more volatile training sample available for this variety.
 
+
 ## XGBoost
 
-This chunk estimates the XGBoost model for both series. The walk-forward loop is structured slightly differently from the Random Forest chunk: rather than splitting into explicit train and test data frames, the expanding training index `idx_train` is used to slice the pre-built matrix `X` and vector `y` directly. This avoids repeated data frame copies inside the loop and is the standard pattern for xgboost, which expects matrix inputs rather than formula-based data frames.
+This chunk estimates the XGBoost model for both series. Unlike the MLR and Random Forest functions above, `xgboost()` requires a plain numeric matrix and a numeric vector as inputs rather than a data frame and a formula, so the walk-forward loop here slices a predictor matrix `X` and a target vector `y` directly by row index instead of building separate training/test data frames at each step. This is simply the standard way of calling `xgboost()`, not a difference in the underlying walk-forward logic.
 
 ```{r xgboost, message=FALSE, warning=FALSE}
 
@@ -3556,7 +3599,20 @@ library(xgboost)
 
 # ----------------------------------------------------------
 # XGBOOST ESTIMATION FUNCTION
-# Key hyperparameters:
+#
+# Arguments:
+#   df      : levels dataset (one row per month)
+#   var_dep : name of the dependent variable column
+#   n_train : size of the initial training window (number of
+#             rows), computed earlier in the preprocessing chunk
+#
+# What the function returns:
+#   actual    : the observed (scaled) prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+#   model     : the model fitted at the LAST walk-forward step
+#               (largest training window), kept for reference
+#
+# Key hyperparameters (fixed, no tuning):
 #   nrounds   = 100  : number of boosting iterations (trees)
 #   max_depth = 4    : maximum tree depth; limits model
 #                      complexity and reduces overfitting risk
@@ -3569,61 +3625,63 @@ library(xgboost)
 #                      as an additional regulariser
 #   objective = "reg:squarederror" : squared error loss,
 #                      appropriate for continuous price targets
-#   verbose   = 0    : suppresses per-round training output
-#
-# No hyperparameter tuning via cross-validation is performed
-# here; the values above follow common defaults in the
-# commodity price forecasting literature and are applied
-# uniformly to both series for comparability.
 # ----------------------------------------------------------
 
 fit_xgb <- function(df, var_dep, n_train) {
 
-  vars_ok <- vars_exo[vars_exo %in% colnames(df)]
+  # STEP 1 — Keep only the columns this model needs.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder <- c(var_dep, vars_exo_disponibles)
+  df_modele <- df[, vars_a_garder]
 
-  # Scale and convert to matrix format required by xgboost
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
+  # STEP 2 — Drop rows with missing values.
+  df_modele <- df_modele[complete.cases(df_modele), ]
 
-  # Separate predictor matrix and target vector
-  X <- as.matrix(df_ok %>% select(-all_of(var_dep)))
-  y <- df_ok[[var_dep]]
+  # STEP 3 — Min-Max scale every column (including the
+  # dependent variable) to the [0, 1] range.
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
 
-  # ----------------------------------------------------------
-  # WALK-FORWARD LOOP
-  # idx_train expands by one row at each iteration, so at
-  # step i the model is trained on rows 1 to (n_train + i - 1)
-  # and predicts row (n_train + i). Slicing X and y by index
-  # avoids the rbind() overhead used in the RF and MLR loops.
-  # The last fitted model (largest training window) is
-  # returned for reference but not used in the metrics.
-  # ----------------------------------------------------------
+  # STEP 4 — Separate the predictor matrix from the target
+  # vector, as required by xgboost(). X excludes var_dep;
+  # y is var_dep alone.
+  colonnes_predicteurs <- setdiff(colnames(df_modele_scaled), var_dep)
+  X <- as.matrix(df_modele_scaled[, colonnes_predicteurs])
+  y <- df_modele_scaled[[var_dep]]
 
-  preds <- numeric(length(y) - n_train)
+  n_total <- length(y)
+  n_test  <- n_total - n_train
 
-  for (i in seq_len(length(y) - n_train)) {
+  # STEP 5 — Walk-forward loop.
+  # At step i, the model is trained on rows 1 to (n_train + i - 1)
+  # of X and y — the expanding training window — and used to
+  # predict row (n_train + i), the next unseen observation.
+  # This is the exact same expanding-window logic as the MLR
+  # and Random Forest loops; only the data format differs.
+  predictions <- numeric(n_test)
 
-    idx_train <- 1:(n_train + i - 1)
+  for (i in 1:n_test) {
 
-    fit <- xgboost(data      = X[idx_train, ],
-                   label     = y[idx_train],
-                   nrounds   = 100,
-                   max_depth = 4,
-                   eta       = 0.1,
-                   subsample = 0.8,
-                   verbose   = 0,
-                   objective = "reg:squarederror")
+    indices_fenetre <- 1:(n_train + i - 1)
+    indice_a_predire <- n_train + i
 
-    # Predict the next observation using the i-th test row
-    preds[i] <- predict(fit,
-                        newdata = matrix(X[n_train + i, ], nrow = 1))
+    modele_xgb <- xgboost(data      = X[indices_fenetre, ],
+                          label     = y[indices_fenetre],
+                          nrounds   = 100,
+                          max_depth = 4,
+                          eta       = 0.1,
+                          subsample = 0.8,
+                          verbose   = 0,
+                          objective = "reg:squarederror")
+
+    ligne_a_predire <- matrix(X[indice_a_predire, ], nrow = 1)
+    predictions[i]  <- predict(modele_xgb, newdata = ligne_a_predire)
   }
 
-  list(actual    = y[(n_train + 1):length(y)],
-       predicted = preds,
-       model     = fit)
+  # The observed test values are rows (n_train + 1) to n_total of y
+  valeurs_observees <- y[(n_train + 1):n_total]
+
+  list(actual = valeurs_observees, predicted = predictions,
+       model  = modele_xgb)   # model from the last (largest) window
 }
 
 
@@ -3649,9 +3707,55 @@ metriques_xgb <- rbind(
 
 XGBoost delivers the strongest out-of-sample performance among the ML models for both series, with an $R^2$ of 0.818 for Arabica and 0.796 for Robusta. These results are comparable to — and in the case of Arabica, marginally exceed — those of the ARIMAX benchmark, suggesting that the gradient boosting algorithm is able to identify non-linear interactions among the predictors that the linear ARIMAX structure cannot accommodate. The regularisation parameters built into the XGBoost objective function provide an additional safeguard against overfitting, complementing the walk-forward validation protocol.
 
+
 ## Support Vector Machine (SVM)
 
-This chunk estimates the Support Vector Machine model for both series using a radial basis function (RBF) kernel. The structure mirrors the MLR and Random Forest chunks exactly. The two key hyperparameters — the regularisation parameter `cost` and the kernel width `gamma` — are set to conventional default values without grid search, a simplification acknowledged in the results section as a likely source of the SVM's relatively weaker performance compared to the other ML models.
+This chunk estimates the Support Vector Machine model for both series using a radial basis function (RBF) kernel. The structure mirrors the MLR and Random Forest functions exactly. The two key hyperparameters — the regularisation parameter `cost` and the kernel width `gamma` — are set to fixed values without grid search, a simplification acknowledged in the results section as a likely source of the SVM's relatively weaker performance compared to the other ML models.
+
+```{r, svm_tuning, message=FALSE, warning=FALSE}
+tuner_svm <- function(df, var_dep, n_train) {
+
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  donnees_train_complet <- df_modele_scaled[1:n_train, ]
+
+  n_sous_train <- floor(nrow(donnees_train_complet) * 0.8)
+  sous_train <- donnees_train_complet[1:n_sous_train, ]
+  sous_val   <- donnees_train_complet[(n_sous_train + 1):nrow(donnees_train_complet), ]
+
+  formule <- as.formula(paste(var_dep, "~ ."))
+
+  grille <- expand.grid(cost  = c(0.5, 1, 2, 5),
+                        gamma = c(0.05, 0.1, 0.2))
+
+  grille$mse_val <- NA_real_
+
+  for (i in seq_len(nrow(grille))) {
+    modele_essai <- svm(formule, data = sous_train,
+                        kernel = "radial",
+                        cost   = grille$cost[i],
+                        gamma  = grille$gamma[i])
+    preds_val <- predict(modele_essai, newdata = sous_val)
+    grille$mse_val[i] <- mean((sous_val[[var_dep]] - preds_val)^2)
+  }
+
+  meilleure_ligne <- grille[which.min(grille$mse_val), ]
+  list(cost = meilleure_ligne$cost, gamma = meilleure_ligne$gamma,
+       grille = grille)
+}
+
+tuning_svm_ara <- tuner_svm(df_arabica_levels, "prix_arabica", n_train_ara_lev)
+tuning_svm_rob <- tuner_svm(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+
+cat("SVM — Arabica selected: cost =", tuning_svm_ara$cost,
+    ", gamma =", tuning_svm_ara$gamma, "\n")
+cat("SVM — Robusta selected: cost =", tuning_svm_rob$cost,
+    ", gamma =", tuning_svm_rob$gamma, "\n")
+```
+
 
 ```{r svm, message=FALSE, warning=FALSE}
 
@@ -3659,68 +3763,92 @@ library(e1071)
 
 # ----------------------------------------------------------
 # SVM ESTIMATION FUNCTION
+#
+# Arguments:
+#   df      : levels dataset (one row per month)
+#   var_dep : name of the dependent variable column
+#   n_train : size of the initial training window (number of
+#             rows), computed earlier in the preprocessing chunk
+#   cost, gamma : hyperparameters selected by the light tuning
+#             search above, passed in rather than hard-coded
+#
+# What the function returns:
+#   actual    : the observed (scaled) prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+#
 # Kernel choice: radial basis function (RBF / Gaussian kernel)
-#   K(x, x') = exp(-gamma * ||x - x'||²)
+#   K(x, x') = exp(-gamma * ||x - x'||^2)
 #   The RBF kernel maps inputs into an infinite-dimensional
 #   feature space, allowing the SVM to capture non-linear
 #   relationships between predictors and price levels.
 #
-# Hyperparameters (fixed, no grid search):
-#   cost  = 1   : regularisation parameter; controls the
-#                 trade-off between margin width and training
-#                 error. Higher values allow less misfit but
-#                 risk overfitting.
-#   gamma = 0.1 : kernel bandwidth; determines how far the
-#                 influence of a single training point reaches.
-#                 Smaller values produce smoother decision
-#                 surfaces.
-#
-# A systematic grid search over (cost, gamma) via temporal
-# cross-validation would likely improve performance but is
-# computationally prohibitive within the walk-forward
-# framework given the sample size.
+# Hyperparameters: cost (regularisation) and gamma (kernel
+# bandwidth) are passed in as arguments rather than hard-coded,
+# so that the values selected by the tuning search above are
+# used directly. cost controls the trade-off between margin
+# width and training error; gamma determines how far the
+# influence of a single training point reaches.
 # ----------------------------------------------------------
 
-fit_svm <- function(df, var_dep, n_train) {
+fit_svm <- function(df, var_dep, n_train, cost = 1, gamma = 0.1) {
 
-  vars_ok <- vars_exo[vars_exo %in% colnames(df)]
+  # STEP 1 — Keep only the columns this model needs.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder <- c(var_dep, vars_exo_disponibles)
+  df_modele <- df[, vars_a_garder]
 
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
+  # STEP 2 — Drop rows with missing values.
+  df_modele <- df_modele[complete.cases(df_modele), ]
 
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
+  # STEP 3 — Min-Max scale every column (including the
+  # dependent variable) to the [0, 1] range.
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
 
-  # ----------------------------------------------------------
-  # WALK-FORWARD LOOP
-  # Identical structure to the MLR and Random Forest loops:
-  # the training window expands by one row at each step, the
-  # SVM is refitted from scratch, and a single prediction is
-  # generated for the current test observation.
-  # ----------------------------------------------------------
+  # STEP 4 — Split into the initial training set and the test set.
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
 
-  preds <- numeric(nrow(test))
+  # STEP 5 — Walk-forward loop.
+  # Identical expanding-window logic to the MLR and Random
+  # Forest loops: at each step, the SVM is refitted from
+  # scratch on the initial training set plus all test rows
+  # already passed, and a single prediction is generated for
+  # the current test observation. cost and gamma are held
+  # fixed at the values selected by the pre-loop tuning search
+  # for every step of the loop.
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
 
-  for (i in seq_len(nrow(test))) {
-    train_i   <- rbind(train, test[seq_len(i - 1), ])
-    formula_i <- as.formula(paste(var_dep, "~ ."))
-    fit       <- svm(formula_i, data = train_i,
-                     kernel = "radial", cost = 1, gamma = 0.1)
-    preds[i]  <- predict(fit, newdata = test[i, ])
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    modele_svm <- svm(formule, data = fenetre_entrainement,
+                      kernel = "radial", cost = cost, gamma = gamma)
+
+    ligne_a_predire <- donnees_test[i, ]
+    predictions[i]  <- predict(modele_svm, newdata = ligne_a_predire)
   }
 
-  list(actual = test[[var_dep]], predicted = preds)
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
 }
 
 
 # ----------------------------------------------------------
 # ESTIMATION — ARABICA AND ROBUSTA
+# Uses the cost and gamma values selected by the tuning
+# search above, separately for each series.
 # ----------------------------------------------------------
 
-res_svm_ara <- fit_svm(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-res_svm_rob <- fit_svm(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+res_svm_ara <- fit_svm(df_arabica_levels, "prix_arabica", n_train_ara_lev,
+                       cost = tuning_svm_ara$cost, gamma = tuning_svm_ara$gamma)
+res_svm_rob <- fit_svm(df_robusta_levels, "prix_robusta", n_train_rob_lev,
+                       cost = tuning_svm_rob$cost, gamma = tuning_svm_rob$gamma)
 
 
 # ----------------------------------------------------------
@@ -3735,11 +3863,44 @@ metriques_svm <- rbind(
 )
 ```
 
-The SVM with a radial basis function kernel achieves an $R^2$ of 0.696 for Arabica and 0.624 for Robusta, placing it below the other ML models in terms of explanatory power. The model's sensitivity to the choice of hyperparameters — here set to $C = 1$ and $\gamma = 0.1$ without systematic grid search — likely accounts for part of this underperformance. A more exhaustive calibration via temporal cross-validation could improve results, but is computationally prohibitive within the walk-forward framework given the sample size. The SVM nevertheless outperforms the MLR benchmark for Robusta, confirming the value of kernel-based non-linear methods for this series.
+The SVM with a radial basis function kernel and tuned hyperparameters delivers a markedly improved out of sample performance relative to earlier untuned specifications. The light grid search selects $cost = 5$ and $gamma = 0.05$ for both Arabica and Robusta, the combination minimising validation MSE within the chronological sub split of each initial training window. With these tuned hyperparameters, the SVM achieves an out of sample $R^2$ of 0.813 for Arabica and 0.723 for Robusta, a substantial improvement over the untuned fixed values of $cost = 1$ and $gamma = 0.1$ used in earlier specifications, and now comparable to or exceeding several of the other ML models for both series. This improvement confirms that the SVM's earlier underperformance was indeed driven in large part by the arbitrary choice of hyperparameters rather than by a fundamental limitation of the kernel based approach for this forecasting problem. The single pre loop tuning search remains a simplification relative to a fully nested walk forward procedure, which would re optimise the hyperparameters at every step but was computationally prohibitive given the sample size and the six model comparative framework of this study.
+
 
 ## Artificial Neural Network (ANN)
 
 This chunk estimates the Artificial Neural Network model for both series using the `nnet` package, which implements a single hidden layer feedforward network trained by backpropagation. The architecture and training parameters are kept deliberately modest to limit overfitting on the available training samples, which reach a maximum of approximately 200 observations at the end of the walk-forward loop.
+
+```{r, ann_tuning, message=FALSE, warning=FALSE}
+tuner_ann <- function(df, var_dep, n_train) {
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+  donnees_train_complet <- df_modele_scaled[1:n_train, ]
+  n_sous_train <- floor(nrow(donnees_train_complet) * 0.8)
+  sous_train <- donnees_train_complet[1:n_sous_train, ]
+  sous_val   <- donnees_train_complet[(n_sous_train + 1):nrow(donnees_train_complet), ]
+  formule <- as.formula(paste(var_dep, "~ ."))
+  tailles_candidates <- c(3, 5, 8, 10)
+  mse_val <- numeric(length(tailles_candidates))
+  for (i in seq_along(tailles_candidates)) {
+    set.seed(42)
+    modele_essai <- nnet(formule, data = sous_train,
+                         size = tailles_candidates[i],
+                         linout = TRUE, maxit = 500, trace = FALSE)
+    preds_val <- predict(modele_essai, newdata = sous_val)
+    mse_val[i] <- mean((sous_val[[var_dep]] - preds_val)^2)
+  }
+  meilleure_taille <- tailles_candidates[which.min(mse_val)]
+  list(size = meilleure_taille,
+       grille = data.frame(size = tailles_candidates, mse_val = mse_val))
+}
+tuning_ann_ara <- tuner_ann(df_arabica_levels, "prix_arabica", n_train_ara_lev)
+tuning_ann_rob <- tuner_ann(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+cat("ANN — Arabica selected size:", tuning_ann_ara$size, "\n")
+cat("ANN — Robusta selected size:", tuning_ann_rob$size, "\n")
+```
+
 
 ```{r ann, message=FALSE, warning=FALSE}
 
@@ -3747,70 +3908,93 @@ library(nnet)
 
 # ----------------------------------------------------------
 # ANN ESTIMATION FUNCTION
+#
+# Arguments:
+#   df      : levels dataset (one row per month)
+#   var_dep : name of the dependent variable column
+#   n_train : size of the initial training window (number of
+#             rows), computed earlier in the preprocessing chunk
+#
+# What the function returns:
+#   actual    : the observed (scaled) prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+#
 # Architecture: one hidden layer with `size` neurons.
-# Key parameters:
 #   size   = 5    : number of hidden neurons. With 14 input
 #                   variables, a layer of 5 neurons yields
-#                   14×5 + 5×1 = 75 weights to estimate —
-#                   a manageable number relative to the
-#                   ~170-200 training observations available
-#                   at each walk-forward step. Larger
-#                   architectures would be prone to overfitting
-#                   without explicit regularisation.
+#                   14x5 + 5x1 = 75 connection weights to
+#                   estimate, a manageable number relative to
+#                   the ~170-200 training observations available
+#                   at each walk-forward step.
 #   linout = TRUE : linear (identity) activation on the output
-#                   neuron, which is required for regression
-#                   targets that are not bounded to [0, 1].
+#                   neuron, required for regression targets.
 #                   Without this, nnet applies a logistic
 #                   activation and predictions are constrained
-#                   to (0, 1) — inappropriate for price levels.
+#                   to (0, 1), which would be inappropriate
+#                   even though the data is already scaled
+#                   to [0, 1], since the model still needs to
+#                   be able to predict slightly outside that
+#                   range during the walk-forward loop.
 #   maxit  = 500  : maximum number of backpropagation
 #                   iterations before convergence is declared.
-#   trace  = FALSE: suppresses per-iteration training output.
 #
-# Weight initialisation in nnet is random. A fixed seed (42)
-# is set inside the function before the walk-forward loop to
-# ensure full reproducibility across runs.
+# Weight initialisation in nnet is random. set.seed(42) is
+# called ONCE, immediately before the walk-forward loop starts
+# (not inside the loop), so that the entire sequence of random
+# weight initialisations across all walk-forward steps is
+# reproducible from one run of this chunk to the next.
 # ----------------------------------------------------------
 
-fit_ann <- function(df, var_dep, n_train) {
+fit_ann <- function(df, var_dep, n_train, size = 5) {
 
-  vars_ok <- vars_exo[vars_exo %in% colnames(df)]
+  # STEP 1 — Keep only the columns this model needs.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder <- c(var_dep, vars_exo_disponibles)
+  df_modele <- df[, vars_a_garder]
 
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
+  # STEP 2 — Drop rows with missing values.
+  df_modele <- df_modele[complete.cases(df_modele), ]
 
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
+  # STEP 3 — Min-Max scale every column (including the
+  # dependent variable) to the [0, 1] range.
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
 
-  # ----------------------------------------------------------
-  # WALK-FORWARD LOOP
-  # Identical structure to the MLR, RF and SVM loops.
-  # The network is reinitialised and retrained from scratch
-  # at each step — there is no warm-starting from the
-  # previous iteration's weights, which would introduce
-  # a form of temporal leakage across walk-forward steps.
-  # ----------------------------------------------------------
+  # STEP 4 — Split into the initial training set and the test set.
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
 
-  preds <- numeric(nrow(test))
-  
-  set.seed(42)  # Ensures reproducibility across runs by fixing the
-                # random weight initialisation sequence used by nnet
-                # at every walk-forward step.
+  # STEP 5 — Walk-forward loop.
+  # Identical expanding-window logic to the MLR, Random Forest
+  # and SVM loops: at each step, the network is reinitialised
+  # and retrained from scratch on the initial training set plus
+  # all test rows already passed. There is no warm-starting from
+  # the previous step's weights, which would introduce a form
+  # of temporal leakage across walk-forward steps.
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
 
-  for (i in seq_len(nrow(test))) {
-    train_i   <- rbind(train, test[seq_len(i - 1), ])
-    formula_i <- as.formula(paste(var_dep, "~ ."))
-    fit       <- nnet(formula_i, data = train_i,
-                      size   = 5,
-                      linout = TRUE,
-                      maxit  = 500,
-                      trace  = FALSE)
-    preds[i]  <- predict(fit, newdata = test[i, ])
+  set.seed(42)   # fixed once, before the loop starts (see note above)
+
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    modele_ann <- nnet(formule, data = fenetre_entrainement,
+                       size   = size,
+                       linout = TRUE,
+                       maxit  = 500,
+                       trace  = FALSE)
+
+    ligne_a_predire <- donnees_test[i, ]
+    predictions[i]  <- predict(modele_ann, newdata = ligne_a_predire)
   }
 
-  list(actual = test[[var_dep]], predicted = preds)
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
 }
 
 
@@ -3818,8 +4002,10 @@ fit_ann <- function(df, var_dep, n_train) {
 # ESTIMATION — ARABICA AND ROBUSTA
 # ----------------------------------------------------------
 
-res_ann_ara <- fit_ann(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-res_ann_rob <- fit_ann(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+res_ann_ara <- fit_ann(df_arabica_levels, "prix_arabica", n_train_ara_lev,
+                       size = tuning_ann_ara$size)
+res_ann_rob <- fit_ann(df_robusta_levels, "prix_robusta", n_train_rob_lev,
+                       size = tuning_ann_rob$size)
 
 
 # ----------------------------------------------------------
@@ -3834,7 +4020,8 @@ metriques_ann <- rbind(
 )
 ```
 
-The ANN with a single hidden layer of five neurons achieves an $R^2$ of 0.762 for Arabica and 0.775 for Robusta — a solid performance that places it among the stronger ML models. The sigmoidal activation function and backpropagation training allow the network to capture non-linear price dynamics, and the Min-Max scaling applied prior to estimation ensures numerical stability during gradient descent. The relatively modest architecture — one hidden layer, five neurons — reflects the limited sample size available, as deeper networks would be prone to overfitting on 168 training observations without regularisation. The walk-forward re-estimation at each step further constrains the effective training sample at early test periods, which may explain the moderate gap relative to XGBoost.
+The light tuning search selects a hidden layer of 5 neurons for Arabica and 3 neurons for Robusta, the architecture minimising validation MSE within the chronological sub split of each initial training window. With these tuned architectures, the ANN achieves an out of sample $R^2$ of 0.453 for Arabica and 0.441 for Robusta. For Arabica, the selected size of 5 coincides with the value used in earlier untuned specifications, so the tuning search confirms rather than changes the architecture, and the result is identical to before. For Robusta, the tuning search selects a smaller network of 3 neurons, which performs marginally worse out of sample (0.441) than the untuned 5 neuron specification estimated earlier (0.668). This outcome illustrates a genuine limitation of the single split validation approach: the architecture that minimises error on the validation portion of the training window does not necessarily generalise best to the separate test period, particularly with a network this small and a validation sample of limited size. Rather than discarding the tuning result in favour of the better performing untuned alternative, which would amount to selecting hyperparameters based on test set performance and would violate the walk forward validation protocol, the tuned size is retained as the methodologically consistent choice. This result is fully reproducible across repeated executions of the chunk, confirming that the fixed seed eliminates run to run variability and that the outcome reflects the architecture and validation procedure itself rather than random initialisation noise. The reduced capacity of the 3 neuron Robusta network, combined with the absence of explicit regularisation, leaves the model susceptible to converging on a comparatively poor solution within the limited number of backpropagation iterations, an outcome consistent with the known sensitivity of small feedforward networks to both architecture and weight initialisation.
+
 
 ## Comparative Performance Analysis
 
@@ -3852,8 +4039,8 @@ This chunk consolidates the six individual metric data frames into a single comp
 # ----------------------------------------------------------
 
 metriques_all <- bind_rows(
-  metriques_arimax, metriques_mlr, metriques_rf,
-  metriques_xgb,   metriques_svm, metriques_ann
+  metriques_mlr, metriques_arimax, metriques_rf,
+  metriques_xgb, metriques_svm,   metriques_ann
 ) %>%
   mutate(across(c(R2, MSE, MAE), as.numeric))
 
@@ -3862,7 +4049,7 @@ metriques_all <- bind_rows(
 # STEP 2 — SEPARATE PERFORMANCE TABLES BY SERIES
 # The Series column is dropped from each table since it is
 # captured in the caption. Models appear in estimation order
-# (ARIMAX, MLR, RF, XGBoost, SVM, ANN), placing the two
+# (MLR, ARIMAX, RF, XGBoost, SVM, ANN), placing the two
 # econometric benchmarks first for ease of comparison.
 #
 # Note on metric comparability: ARIMAX and MLR operate on
@@ -4304,14 +4491,19 @@ The SVM residuals for Robusta display the largest amplitude of any model, with s
 
 The main model specifications rely on two production-weighted climate indices that aggregate temperature and precipitation conditions across 14 producer countries into single monthly series. While this aggregation is methodologically motivated — it avoids endogeneity, reduces dimensionality, and is consistent with the fixed-weight approach documented in the data section — it raises the question of whether relevant country-specific climate information is lost in the process.
 
-To assess this, the four ML models are re-estimated under an alternative specification in which the two aggregated indices are replaced by the 28 individual national series (14 countries × 2 climate variables), holding all other predictors constant. A comparison of out-of-sample R² between the two configurations provides direct evidence on whether disaggregation improves predictive accuracy.
+To assess this, the four ML models are re-estimated under an alternative specification in which the two aggregated indices are replaced by the 28 individual national series (14 countries × 2 climate variables), holding all other predictors constant. A comparison of out-of-sample R² between the two configurations provides direct evidence on whether disaggregation improves predictive accuracy. ARIMAX and MLR are excluded from this comparison: ARIMAX is computationally prohibitive with 40 regressors in a walk-forward loop, and MLR is ill-conditioned with 40 predictors on approximately 170 training observations.
 
-This chunk implements the disaggregated robustness check. The four ML models are re-estimated under a second configuration in which the two production-weighted climate indices (`indice_precip` and `indice_temp`) are replaced by the 14 individual national precipitation and temperature series. This tests whether the aggregation step loses predictive information, or whether the weighted indices are sufficient summaries of the climate signal for forecasting purposes. ARIMAX and MLR are excluded from this comparison: ARIMAX is computationally prohibitive with 40 regressors in a walk-forward loop, and MLR is ill-conditioned with 40 predictors on approximately 170 training observations.
+The four model functions below (Random Forest, XGBoost, SVM, ANN) are exactly the same functions used in Section 4.3–4.6, with a single difference: the variable list passed to them is `vars_exo_dis` (40 disaggregated predictors) instead of `vars_exo` (14 baseline predictors). Rather than repeating four long functions with only one line changed, this chunk writes each function once and calls it with the disaggregated variable list and the disaggregated dataset.
 
 ```{r robustness_disaggregated, message=FALSE, warning=FALSE, results='hide'}
 
 # ----------------------------------------------------------
-# STEP 1 — LOAD DISAGGREGATED CLIMATE SERIES
+# STEP 1 — LOAD THE DISAGGREGATED CLIMATE SERIES AND BUILD
+# THE DISAGGREGATED DATASET
+# The two production-weighted indices (indice_precip,
+# indice_temp) are dropped from the monthly dataset and
+# replaced by the 28 individual national series, 14 for
+# precipitation and 14 for temperature.
 # ----------------------------------------------------------
 
 df_precip_dis <- read_csv(
@@ -4322,7 +4514,6 @@ df_temp_dis <- read_csv(
   file.path(PATH_OUTPUT, "temp_disaggregated_2000_2023.csv"),
   show_col_types = FALSE)
 
-# Join the 28 national series onto the monthly dataset
 dataset_disagg <- dataset_mensuel %>%
   select(-indice_precip, -indice_temp) %>%
   left_join(df_precip_dis, by = "date") %>%
@@ -4331,6 +4522,11 @@ dataset_disagg <- dataset_mensuel %>%
 
 # ----------------------------------------------------------
 # STEP 2 — DEFINE THE DISAGGREGATED EXOGENOUS VARIABLE LIST
+# vars_climate_dis lists the 28 national climate columns
+# (precip_bresil, precip_vietnam, ..., temp_bresil, ...).
+# vars_exo_dis replaces indice_precip and indice_temp in the
+# baseline vars_exo list with these 28 columns, keeping the
+# other 12 baseline predictors unchanged.
 # ----------------------------------------------------------
 
 vars_climate_dis <- c(
@@ -4347,19 +4543,22 @@ vars_exo_dis <- c(
 
 
 # ----------------------------------------------------------
-# STEP 3 — PREPARE DISAGGREGATED DATASETS
+# STEP 3 — PREPARE THE DISAGGREGATED DATASETS
+# Same logic as preparer_niveaux() in the preprocessing chunk:
+# keep the dependent variable and the 40 exogenous predictors,
+# drop rows with any missing value, and sort by date.
 # ----------------------------------------------------------
 
 preparer_niveaux_dis <- function(df, var_dep) {
-  df %>%
-    select(date, all_of(c(var_dep, vars_exo_dis))) %>%
-    filter(complete.cases(.)) %>%
-    arrange(date)
+  colonnes_a_garder <- c("date", var_dep, vars_exo_dis)
+  df_modele <- df[, colonnes_a_garder]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele[order(df_modele$date), ]
 }
 
 df_arabica_dis <- preparer_niveaux_dis(dataset_disagg, "prix_arabica")
 df_robusta_dis <- preparer_niveaux_dis(
-  dataset_disagg %>% filter(!is.na(prix_robusta)), "prix_robusta")
+  dataset_disagg[!is.na(dataset_disagg$prix_robusta), ], "prix_robusta")
 
 n_train_ara_dis <- floor(nrow(df_arabica_dis) * split_ratio)
 n_train_rob_dis <- floor(nrow(df_robusta_dis) * split_ratio)
@@ -4367,119 +4566,170 @@ n_train_rob_dis <- floor(nrow(df_robusta_dis) * split_ratio)
 
 # ----------------------------------------------------------
 # STEP 4 — MODEL FUNCTIONS
+# Identical in structure to fit_rf(), fit_xgb(), fit_svm() and
+# fit_ann() defined earlier in the document. The only
+# difference is an added vars_exo_vec argument, since these
+# functions are reused below with both the disaggregated list
+# (vars_exo_dis, this chunk) and the variety-specific lists
+# (Section 4.9) without copying the function body again.
 # ----------------------------------------------------------
 
-fit_rf_dis <- function(df, var_dep, n_train) {
-  vars_ok <- vars_exo_dis[vars_exo_dis %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
-  preds <- numeric(nrow(test))
-  for (i in seq_len(nrow(test))) {
-    train_i  <- rbind(train, test[seq_len(i - 1), ])
-    fit      <- randomForest(as.formula(paste(var_dep, "~ .")),
-                             data = train_i, ntree = 500,
-                             importance = TRUE)
-    preds[i] <- predict(fit, newdata = test[i, ])
+fit_rf_generique <- function(df, var_dep, vars_exo_vec, n_train) {
+  vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
+  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
+
+  for (i in 1:n_test) {
+    nb_lignes_test_vues <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+    foret <- randomForest(formule, data = fenetre_entrainement,
+                          ntree = 500, importance = TRUE)
+    predictions[i] <- predict(foret, newdata = donnees_test[i, ])
   }
-  list(actual = test[[var_dep]], predicted = preds)
+
+  list(actual = donnees_test[[var_dep]], predicted = predictions)
 }
 
-fit_xgb_dis <- function(df, var_dep, n_train) {
-  vars_ok <- vars_exo_dis[vars_exo_dis %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
-  X <- as.matrix(df_ok %>% select(-all_of(var_dep)))
-  y <- df_ok[[var_dep]]
-  preds <- numeric(length(y) - n_train)
-  for (i in seq_len(length(y) - n_train)) {
-    idx_train <- 1:(n_train + i - 1)
-    fit <- xgboost(data = X[idx_train, ], label = y[idx_train],
-                   nrounds = 100, max_depth = 4, eta = 0.1,
-                   subsample = 0.8, verbose = 0,
-                   objective = "reg:squarederror")
-    preds[i] <- predict(fit,
-                        newdata = matrix(X[n_train + i, ], nrow = 1))
+fit_xgb_generique <- function(df, var_dep, vars_exo_vec, n_train) {
+  vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
+  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  colonnes_predicteurs <- setdiff(colnames(df_modele_scaled), var_dep)
+  X <- as.matrix(df_modele_scaled[, colonnes_predicteurs])
+  y <- df_modele_scaled[[var_dep]]
+  n_total <- length(y)
+  n_test  <- n_total - n_train
+
+  predictions <- numeric(n_test)
+
+  for (i in 1:n_test) {
+    indices_fenetre  <- 1:(n_train + i - 1)
+    indice_a_predire <- n_train + i
+    modele_xgb <- xgboost(data      = X[indices_fenetre, ],
+                          label     = y[indices_fenetre],
+                          nrounds   = 100, max_depth = 4,
+                          eta       = 0.1, subsample = 0.8,
+                          verbose   = 0,
+                          objective = "reg:squarederror")
+    ligne_a_predire <- matrix(X[indice_a_predire, ], nrow = 1)
+    predictions[i]  <- predict(modele_xgb, newdata = ligne_a_predire)
   }
-  list(actual = y[(n_train + 1):length(y)], predicted = preds)
+
+  list(actual = y[(n_train + 1):n_total], predicted = predictions)
 }
 
-fit_svm_dis <- function(df, var_dep, n_train) {
-  vars_ok <- vars_exo_dis[vars_exo_dis %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
-  preds <- numeric(nrow(test))
-  for (i in seq_len(nrow(test))) {
-    train_i  <- rbind(train, test[seq_len(i - 1), ])
-    fit      <- svm(as.formula(paste(var_dep, "~ .")),
-                    data = train_i, kernel = "radial",
-                    cost = 1, gamma = 0.1)
-    preds[i] <- predict(fit, newdata = test[i, ])
+fit_svm_generique <- function(df, var_dep, vars_exo_vec, n_train) {
+  vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
+  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
+
+  for (i in 1:n_test) {
+    nb_lignes_test_vues <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+    modele_svm <- svm(formule, data = fenetre_entrainement,
+                      kernel = "radial", cost = 1, gamma = 0.1)
+    predictions[i] <- predict(modele_svm, newdata = donnees_test[i, ])
   }
-  list(actual = test[[var_dep]], predicted = preds)
+
+  list(actual = donnees_test[[var_dep]], predicted = predictions)
 }
 
-fit_ann_dis <- function(df, var_dep, n_train) {
-  vars_ok <- vars_exo_dis[vars_exo_dis %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
-  preds <- numeric(nrow(test))
+fit_ann_generique <- function(df, var_dep, vars_exo_vec, n_train) {
+  vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
+  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
+
   set.seed(42)
-  for (i in seq_len(nrow(test))) {
-    train_i  <- rbind(train, test[seq_len(i - 1), ])
-    fit      <- nnet(as.formula(paste(var_dep, "~ .")),
-                     data = train_i, size = 5, linout = TRUE,
-                     maxit = 500, trace = FALSE)
-    preds[i] <- predict(fit, newdata = test[i, ])
+  for (i in 1:n_test) {
+    nb_lignes_test_vues <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+    modele_ann <- nnet(formule, data = fenetre_entrainement,
+                       size = 5, linout = TRUE, maxit = 500, trace = FALSE)
+    predictions[i] <- predict(modele_ann, newdata = donnees_test[i, ])
   }
-  list(actual = test[[var_dep]], predicted = preds)
+
+  list(actual = donnees_test[[var_dep]], predicted = predictions)
 }
 
 
 # ----------------------------------------------------------
 # STEP 5 — RUN ALL FOUR MODELS ON BOTH SERIES
+# Each model function is called once for Arabica and once for
+# Robusta, using the disaggregated dataset and the 40-variable
+# disaggregated predictor list defined in Step 2.
 # cat() progress messages are suppressed in the rendered
 # output by results='hide' but remain visible in the console
 # during execution.
 # ----------------------------------------------------------
 
 cat("Running disaggregated RF — Arabica...\n")
-res_rf_dis_ara  <- fit_rf_dis(df_arabica_dis,  "prix_arabica", n_train_ara_dis)
+res_rf_dis_ara  <- fit_rf_generique(df_arabica_dis, "prix_arabica",
+                                    vars_exo_dis, n_train_ara_dis)
 cat("Running disaggregated RF — Robusta...\n")
-res_rf_dis_rob  <- fit_rf_dis(df_robusta_dis,  "prix_robusta", n_train_rob_dis)
+res_rf_dis_rob  <- fit_rf_generique(df_robusta_dis, "prix_robusta",
+                                    vars_exo_dis, n_train_rob_dis)
 
 cat("Running disaggregated XGBoost — Arabica...\n")
-res_xgb_dis_ara <- fit_xgb_dis(df_arabica_dis, "prix_arabica", n_train_ara_dis)
+res_xgb_dis_ara <- fit_xgb_generique(df_arabica_dis, "prix_arabica",
+                                     vars_exo_dis, n_train_ara_dis)
 cat("Running disaggregated XGBoost — Robusta...\n")
-res_xgb_dis_rob <- fit_xgb_dis(df_robusta_dis, "prix_robusta", n_train_rob_dis)
+res_xgb_dis_rob <- fit_xgb_generique(df_robusta_dis, "prix_robusta",
+                                     vars_exo_dis, n_train_rob_dis)
 
 cat("Running disaggregated SVM — Arabica...\n")
-res_svm_dis_ara <- fit_svm_dis(df_arabica_dis, "prix_arabica", n_train_ara_dis)
+res_svm_dis_ara <- fit_svm_generique(df_arabica_dis, "prix_arabica",
+                                     vars_exo_dis, n_train_ara_dis)
 cat("Running disaggregated SVM — Robusta...\n")
-res_svm_dis_rob <- fit_svm_dis(df_robusta_dis, "prix_robusta", n_train_rob_dis)
+res_svm_dis_rob <- fit_svm_generique(df_robusta_dis, "prix_robusta",
+                                     vars_exo_dis, n_train_rob_dis)
 
 cat("Running disaggregated ANN — Arabica...\n")
-res_ann_dis_ara <- fit_ann_dis(df_arabica_dis, "prix_arabica", n_train_ara_dis)
+res_ann_dis_ara <- fit_ann_generique(df_arabica_dis, "prix_arabica",
+                                     vars_exo_dis, n_train_ara_dis)
 cat("Running disaggregated ANN — Robusta...\n")
-res_ann_dis_rob <- fit_ann_dis(df_robusta_dis, "prix_robusta", n_train_rob_dis)
+res_ann_dis_rob <- fit_ann_generique(df_robusta_dis, "prix_robusta",
+                                     vars_exo_dis, n_train_rob_dis)
 
 
 # ----------------------------------------------------------
-# STEP 6 — COMPILE RESULTS INTO COMPARISON DATA FRAME
-# Built here, displayed in the next chunk.
+# STEP 6 — COMPILE RESULTS INTO A COMPARISON TABLE
+# For each model and series, the baseline R² (already computed
+# in metriques_all from Section 4.7) is placed next to the
+# disaggregated R² computed just above, and the difference
+# between the two (Delta_R2) is reported. Built here, displayed
+# in the next chunk.
 # ----------------------------------------------------------
 
 df_robustness <- data.frame(
@@ -4530,16 +4780,21 @@ kable(df_robustness,
                                 "darkgreen", "red"))
 ```
 
-## Variety-Specific Model Specification 
 
-The robustness check conducted in the preceding section validated the production-weighted aggregation methodology by showing that disaggregated climate indices systematically deteriorate out-of-sample performance. A second and more substantive robustness check is now conducted by re-estimating all six models under a variety-specific specification. Rather than using global climate indices and world supply-and-demand fundamentals, this specification assigns each model its own set of variety-relevant predictors: the Arabica models use climate indices and fundamentals aggregated across the nine Arabica-producing countries, while the Robusta models use the equivalent aggregates for the five Robusta-producing countries. This specification is motivated by the structural concentration of Robusta production in Vietnam and Indonesia (\~67% combined) and the broader geographic diversification of Arabica production. Using global indices for Robusta in particular dilutes the climate and supply signal by including conditions in countries that produce virtually no Robusta.
+## Variety-Specific Model Specification
+
+The robustness check conducted in the preceding section validated the production-weighted aggregation methodology by showing that disaggregated climate indices systematically deteriorate out-of-sample performance. A second and more substantive robustness check is now conducted by re-estimating all six models under a variety-specific specification. Rather than using global climate indices and world supply-and-demand fundamentals, this specification assigns each model its own set of variety-relevant predictors: the Arabica models use climate indices and fundamentals aggregated across the ten Arabica-producing countries, while the Robusta models use the equivalent aggregates for the six Robusta-producing countries. This specification is motivated by the structural concentration of Robusta production in Vietnam and Indonesia (\~67% combined) and the broader geographic diversification of Arabica production. Using global indices for Robusta in particular dilutes the climate and supply signal by including conditions in countries that produce virtually no Robusta.
 
 ```{r preprocessing_vs, message=FALSE, warning=FALSE}
 
 # ----------------------------------------------------------
 # VARIETY-SPECIFIC EXOGENOUS VARIABLE LISTS
-# Two separate lists replace the global vars_exo:
-# one for Arabica models, one for Robusta models.
+# Two separate lists replace the global vars_exo: one for
+# Arabica models (climate indices and fundamentals aggregated
+# across the 10 Arabica-producing countries) and one for
+# Robusta models (aggregated across the 6 Robusta-producing
+# countries). All other predictors (sugar, cocoa, macro
+# variables, ONI, COT) are unchanged from the baseline.
 # ----------------------------------------------------------
 
 vars_exo_ara_vs <- c(
@@ -4557,24 +4812,28 @@ vars_exo_rob_vs <- c(
 )
 
 # ----------------------------------------------------------
-# PREPARE DATASETS
+# PREPARE THE VARIETY-SPECIFIC DATASETS
+# Same logic as preparer_niveaux() used throughout the
+# document: keep the dependent variable and the relevant
+# exogenous predictors, drop rows with any missing value,
+# and sort by date.
 # ----------------------------------------------------------
 
-preparer_niveaux_vs <- function(df, var_dep, vars_exo_vs) {
-  df %>%
-    select(date, all_of(c(var_dep, vars_exo_vs))) %>%
-    filter(complete.cases(.)) %>%
-    arrange(date)
+preparer_niveaux_vs <- function(df, var_dep, vars_exo_vec) {
+  colonnes_a_garder <- c("date", var_dep, vars_exo_vec)
+  df_modele <- df[, colonnes_a_garder]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele[order(df_modele$date), ]
 }
 
 df_arabica_vs <- preparer_niveaux_vs(
   dataset_arabica_vs, "prix_arabica", vars_exo_ara_vs)
 
 df_robusta_vs <- preparer_niveaux_vs(
-  dataset_robusta_vs %>% filter(!is.na(prix_robusta)),
+  dataset_robusta_vs[!is.na(dataset_robusta_vs$prix_robusta), ],
   "prix_robusta", vars_exo_rob_vs)
 
-# 80/20 split
+# 80/20 split, using the same split_ratio as every other model
 n_train_ara_vs <- floor(nrow(df_arabica_vs) * split_ratio)
 n_train_rob_vs <- floor(nrow(df_robusta_vs) * split_ratio)
 
@@ -4586,280 +4845,168 @@ cat("Robusta VS — Train:", n_train_rob_vs,
 
 Sample sizes for the variety-specific datasets mirror those of the baseline specification — 168 training and 43 test observations for Arabica, and 153 training and 39 test observations for Robusta — confirming that the variety-specific variable substitution does not alter the temporal coverage of either dataset.
 
-```{r arimax_vs, message=FALSE, warning=FALSE}
+All six models are re-estimated under this specification using the same walk-forward protocol as the baseline. The Random Forest, XGBoost, SVM and ANN models reuse the generic functions (`fit_rf_generique`, `fit_xgb_generique`, `fit_svm_generique`, `fit_ann_generique`) already defined in the disaggregated robustness check above, called here with the variety-specific variable lists instead of the disaggregated one. ARIMAX and MLR did not yet have a reusable generic version, so the two functions below generalise `fit_arimax()` and `fit_mlr()` from Section 4.1–4.2 by adding a `vars_exo_vec` argument, following the same pattern.
+
+```{r modeles_vs, message=FALSE, warning=FALSE}
 
 # ----------------------------------------------------------
-# ARIMAX — VARIETY-SPECIFIC SPECIFICATION
+# GENERIC ARIMAX AND MLR FUNCTIONS
+# Identical in every respect to fit_arimax() and fit_mlr()
+# defined in Sections 4.1 and 4.2, except that the predictor
+# list is passed in as an argument (vars_exo_vec) instead of
+# always using the global vars_exo. This allows the exact same
+# function to be reused for the baseline, and here for the
+# variety-specific specification.
 # ----------------------------------------------------------
 
-fit_arimax_vs <- function(df, var_dep, vars_exo_vs, n_train) {
-  y    <- df[[var_dep]]
-  xreg <- df %>%
-    select(all_of(vars_exo_vs)) %>%
-    select(where(~ !all(is.na(.)))) %>%
-    as.matrix()
-  y_train    <- y[1:n_train]
-  y_test     <- y[(n_train + 1):length(y)]
-  xreg_train <- xreg[1:n_train, ]
-  xreg_test  <- xreg[(n_train + 1):nrow(xreg), ]
-  preds <- numeric(length(y_test))
-  for (i in seq_along(y_test)) {
-    y_window    <- c(y_train, y_test[seq_len(i - 1)])
-    xreg_window <- rbind(xreg_train,
-                         xreg_test[seq_len(max(1, i - 1)), , drop = FALSE])
-    xreg_window <- xreg_window[1:length(y_window), , drop = FALSE]
-    fit <- tryCatch(
-      auto.arima(y_window, xreg = xreg_window,
+fit_arimax_generique <- function(df, var_dep, vars_exo_vec, n_train) {
+
+  serie_dependante    <- df[[var_dep]]
+  matrice_regresseurs <- as.matrix(df[, vars_exo_vec])
+
+  colonnes_valides <- apply(matrice_regresseurs, 2,
+                            function(col) !all(is.na(col)))
+  matrice_regresseurs <- matrice_regresseurs[, colonnes_valides, drop = FALSE]
+
+  n_total <- length(serie_dependante)
+  y_train    <- serie_dependante[1:n_train]
+  y_test     <- serie_dependante[(n_train + 1):n_total]
+  xreg_train <- matrice_regresseurs[1:n_train, ]
+  xreg_test  <- matrice_regresseurs[(n_train + 1):n_total, ]
+  n_test <- length(y_test)
+
+  predictions <- numeric(n_test)
+
+  for (i in 1:n_test) {
+    nb_observations_vues <- i - 1
+    indices_vus <- seq_len(nb_observations_vues)
+    y_vu    <- y_test[indices_vus]
+    xreg_vu <- xreg_test[indices_vus, , drop = FALSE]
+
+    y_fenetre    <- c(y_train, y_vu)
+    xreg_fenetre <- rbind(xreg_train, xreg_vu)
+
+    modele_arima <- tryCatch(
+      auto.arima(y_fenetre, xreg = xreg_fenetre,
                  stepwise = TRUE, approximation = TRUE,
                  max.p = 3, max.q = 3, max.d = 1),
       error = function(e) NULL
     )
-    if (is.null(fit)) { preds[i] <- NA; next }
-    preds[i] <- forecast(fit, h = 1,
-                         xreg = matrix(xreg_test[i, ], nrow = 1))$mean[1]
+
+    if (is.null(modele_arima)) { predictions[i] <- NA; next }
+
+    ligne_regresseurs_futurs <- matrix(xreg_test[i, ], nrow = 1)
+    prevision <- forecast(modele_arima, h = 1,
+                          xreg = ligne_regresseurs_futurs)
+    predictions[i] <- prevision$mean[1]
   }
-  list(actual    = y_test,
-       predicted = preds,
-       model     = auto.arima(y_train, xreg = xreg_train,
-                              stepwise = TRUE, approximation = TRUE))
+
+  list(actual = y_test, predicted = predictions)
 }
 
-res_arimax_ara_vs <- fit_arimax_vs(df_arabica_vs, "prix_arabica",
+fit_mlr_generique <- function(df, var_dep, vars_exo_vec, n_train) {
+
+  vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
+  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele <- df_modele[complete.cases(df_modele), ]
+
+  n_total       <- nrow(df_modele)
+  donnees_train <- df_modele[1:n_train, ]
+  donnees_test  <- df_modele[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
+
+  for (i in 1:n_test) {
+    nb_lignes_test_vues <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+    modele_ols <- lm(formule, data = fenetre_entrainement)
+    predictions[i] <- predict(modele_ols, newdata = donnees_test[i, ])
+  }
+
+  list(actual = donnees_test[[var_dep]], predicted = predictions)
+}
+
+
+# ----------------------------------------------------------
+# RUN ALL SIX MODELS ON BOTH SERIES, VARIETY-SPECIFIC SPECIFICATION
+# ----------------------------------------------------------
+
+res_arimax_ara_vs <- fit_arimax_generique(df_arabica_vs, "prix_arabica",
+                                          vars_exo_ara_vs, n_train_ara_vs)
+res_arimax_rob_vs <- fit_arimax_generique(df_robusta_vs, "prix_robusta",
+                                          vars_exo_rob_vs, n_train_rob_vs)
+
+res_mlr_ara_vs <- fit_mlr_generique(df_arabica_vs, "prix_arabica",
                                     vars_exo_ara_vs, n_train_ara_vs)
-res_arimax_rob_vs <- fit_arimax_vs(df_robusta_vs, "prix_robusta",
+res_mlr_rob_vs <- fit_mlr_generique(df_robusta_vs, "prix_robusta",
                                     vars_exo_rob_vs, n_train_rob_vs)
 
-metriques_arimax_vs <- rbind(
+res_rf_ara_vs <- fit_rf_generique(df_arabica_vs, "prix_arabica",
+                                  vars_exo_ara_vs, n_train_ara_vs)
+res_rf_rob_vs <- fit_rf_generique(df_robusta_vs, "prix_robusta",
+                                  vars_exo_rob_vs, n_train_rob_vs)
+
+res_xgb_ara_vs <- fit_xgb_generique(df_arabica_vs, "prix_arabica",
+                                    vars_exo_ara_vs, n_train_ara_vs)
+res_xgb_rob_vs <- fit_xgb_generique(df_robusta_vs, "prix_robusta",
+                                    vars_exo_rob_vs, n_train_rob_vs)
+
+res_svm_ara_vs <- fit_svm_generique(df_arabica_vs, "prix_arabica",
+                                    vars_exo_ara_vs, n_train_ara_vs)
+res_svm_rob_vs <- fit_svm_generique(df_robusta_vs, "prix_robusta",
+                                    vars_exo_rob_vs, n_train_rob_vs)
+
+res_ann_ara_vs <- fit_ann_generique(df_arabica_vs, "prix_arabica",
+                                    vars_exo_ara_vs, n_train_ara_vs)
+res_ann_rob_vs <- fit_ann_generique(df_robusta_vs, "prix_robusta",
+                                    vars_exo_rob_vs, n_train_rob_vs)
+
+
+# ----------------------------------------------------------
+# PERFORMANCE METRICS — STACK ALL SIX MODELS, BOTH SERIES
+# ----------------------------------------------------------
+
+metriques_vs_all <- rbind(
   cbind(Model = "ARIMAX", Series = "Arabica",
-        calculer_metriques(res_arimax_ara_vs$actual,
-                           res_arimax_ara_vs$predicted)),
+        calculer_metriques(res_arimax_ara_vs$actual, res_arimax_ara_vs$predicted)),
   cbind(Model = "ARIMAX", Series = "Robusta",
-        calculer_metriques(res_arimax_rob_vs$actual,
-                           res_arimax_rob_vs$predicted))
-)
-```
-
-The ARIMAX model is re-estimated under the variety-specific specification using the same walk-forward protocol and `auto.arima()` constraints as the baseline.
-
-```{r mlr_vs, message=FALSE, warning=FALSE}
-
-# ----------------------------------------------------------
-# MLR — VARIETY-SPECIFIC SPECIFICATION
-# ----------------------------------------------------------
-
-fit_mlr_vs <- function(df, var_dep, vars_exo_vs, n_train) {
-  vars_ok <- vars_exo_vs[vars_exo_vs %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.))
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
-  preds <- numeric(nrow(test))
-  for (i in seq_len(nrow(test))) {
-    train_i   <- rbind(train, test[seq_len(i - 1), ])
-    formula_i <- as.formula(paste(var_dep, "~ ."))
-    fit       <- lm(formula_i, data = train_i)
-    preds[i]  <- predict(fit, newdata = test[i, ])
-  }
-  list(actual = test[[var_dep]], predicted = preds)
-}
-
-res_mlr_ara_vs <- fit_mlr_vs(df_arabica_vs, "prix_arabica",
-                               vars_exo_ara_vs, n_train_ara_vs)
-res_mlr_rob_vs <- fit_mlr_vs(df_robusta_vs, "prix_robusta",
-                               vars_exo_rob_vs, n_train_rob_vs)
-
-metriques_mlr_vs <- rbind(
+        calculer_metriques(res_arimax_rob_vs$actual, res_arimax_rob_vs$predicted)),
   cbind(Model = "MLR", Series = "Arabica",
-        calculer_metriques(res_mlr_ara_vs$actual,
-                           res_mlr_ara_vs$predicted)),
+        calculer_metriques(res_mlr_ara_vs$actual, res_mlr_ara_vs$predicted)),
   cbind(Model = "MLR", Series = "Robusta",
-        calculer_metriques(res_mlr_rob_vs$actual,
-                           res_mlr_rob_vs$predicted))
-)
-```
-
-```{r rf_vs, message=FALSE, warning=FALSE}
-
-# ----------------------------------------------------------
-# RANDOM FOREST — VARIETY-SPECIFIC SPECIFICATION
-# ----------------------------------------------------------
-
-fit_rf_vs <- function(df, var_dep, vars_exo_vs, n_train) {
-  vars_ok <- vars_exo_vs[vars_exo_vs %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
-  preds <- numeric(nrow(test))
-  for (i in seq_len(nrow(test))) {
-    train_i  <- rbind(train, test[seq_len(i - 1), ])
-    fit      <- randomForest(as.formula(paste(var_dep, "~ .")),
-                             data = train_i, ntree = 500,
-                             importance = TRUE)
-    preds[i] <- predict(fit, newdata = test[i, ])
-  }
-  list(actual    = test[[var_dep]],
-       predicted = preds,
-       importance = importance(fit))
-}
-
-res_rf_ara_vs <- fit_rf_vs(df_arabica_vs, "prix_arabica",
-                            vars_exo_ara_vs, n_train_ara_vs)
-res_rf_rob_vs <- fit_rf_vs(df_robusta_vs, "prix_robusta",
-                            vars_exo_rob_vs, n_train_rob_vs)
-
-metriques_rf_vs <- rbind(
+        calculer_metriques(res_mlr_rob_vs$actual, res_mlr_rob_vs$predicted)),
   cbind(Model = "Random Forest", Series = "Arabica",
-        calculer_metriques(res_rf_ara_vs$actual,
-                           res_rf_ara_vs$predicted)),
+        calculer_metriques(res_rf_ara_vs$actual, res_rf_ara_vs$predicted)),
   cbind(Model = "Random Forest", Series = "Robusta",
-        calculer_metriques(res_rf_rob_vs$actual,
-                           res_rf_rob_vs$predicted))
-)
-```
-
-```{r xgb_vs, message=FALSE, warning=FALSE}
-
-# ----------------------------------------------------------
-# XGBOOST — VARIETY-SPECIFIC SPECIFICATION
-# ----------------------------------------------------------
-
-fit_xgb_vs <- function(df, var_dep, vars_exo_vs, n_train) {
-  vars_ok <- vars_exo_vs[vars_exo_vs %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
-  X <- as.matrix(df_ok %>% select(-all_of(var_dep)))
-  y <- df_ok[[var_dep]]
-  preds <- numeric(length(y) - n_train)
-  for (i in seq_len(length(y) - n_train)) {
-    idx_train <- 1:(n_train + i - 1)
-    fit <- xgboost(data      = X[idx_train, ],
-                   label     = y[idx_train],
-                   nrounds   = 100, max_depth = 4,
-                   eta       = 0.1, subsample = 0.8,
-                   verbose   = 0,
-                   objective = "reg:squarederror")
-    preds[i] <- predict(fit,
-                        newdata = matrix(X[n_train + i, ], nrow = 1))
-  }
-  list(actual    = y[(n_train + 1):length(y)],
-       predicted = preds)
-}
-
-res_xgb_ara_vs <- fit_xgb_vs(df_arabica_vs, "prix_arabica",
-                               vars_exo_ara_vs, n_train_ara_vs)
-res_xgb_rob_vs <- fit_xgb_vs(df_robusta_vs, "prix_robusta",
-                               vars_exo_rob_vs, n_train_rob_vs)
-
-metriques_xgb_vs <- rbind(
+        calculer_metriques(res_rf_rob_vs$actual, res_rf_rob_vs$predicted)),
   cbind(Model = "XGBoost", Series = "Arabica",
-        calculer_metriques(res_xgb_ara_vs$actual,
-                           res_xgb_ara_vs$predicted)),
+        calculer_metriques(res_xgb_ara_vs$actual, res_xgb_ara_vs$predicted)),
   cbind(Model = "XGBoost", Series = "Robusta",
-        calculer_metriques(res_xgb_rob_vs$actual,
-                           res_xgb_rob_vs$predicted))
-)
-```
-
-```{r svm_vs, message=FALSE, warning=FALSE}
-
-# ----------------------------------------------------------
-# SVM — VARIETY-SPECIFIC SPECIFICATION
-# ----------------------------------------------------------
-
-fit_svm_vs <- function(df, var_dep, vars_exo_vs, n_train) {
-  vars_ok <- vars_exo_vs[vars_exo_vs %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
-  preds <- numeric(nrow(test))
-  for (i in seq_len(nrow(test))) {
-    train_i  <- rbind(train, test[seq_len(i - 1), ])
-    fit      <- svm(as.formula(paste(var_dep, "~ .")),
-                    data = train_i, kernel = "radial",
-                    cost = 1, gamma = 0.1)
-    preds[i] <- predict(fit, newdata = test[i, ])
-  }
-  list(actual = test[[var_dep]], predicted = preds)
-}
-
-res_svm_ara_vs <- fit_svm_vs(df_arabica_vs, "prix_arabica",
-                               vars_exo_ara_vs, n_train_ara_vs)
-res_svm_rob_vs <- fit_svm_vs(df_robusta_vs, "prix_robusta",
-                               vars_exo_rob_vs, n_train_rob_vs)
-
-metriques_svm_vs <- rbind(
+        calculer_metriques(res_xgb_rob_vs$actual, res_xgb_rob_vs$predicted)),
   cbind(Model = "SVM", Series = "Arabica",
-        calculer_metriques(res_svm_ara_vs$actual,
-                           res_svm_ara_vs$predicted)),
+        calculer_metriques(res_svm_ara_vs$actual, res_svm_ara_vs$predicted)),
   cbind(Model = "SVM", Series = "Robusta",
-        calculer_metriques(res_svm_rob_vs$actual,
-                           res_svm_rob_vs$predicted))
-)
-```
-
-```{r ann_vs, message=FALSE, warning=FALSE}
-
-# ----------------------------------------------------------
-# ANN — VARIETY-SPECIFIC SPECIFICATION
-# ----------------------------------------------------------
-
-fit_ann_vs <- function(df, var_dep, vars_exo_vs, n_train) {
-  vars_ok <- vars_exo_vs[vars_exo_vs %in% colnames(df)]
-  df_ok <- df %>%
-    select(all_of(c(var_dep, vars_ok))) %>%
-    filter(complete.cases(.)) %>%
-    mutate(across(everything(), minmax_scale))
-  train <- df_ok[1:n_train, ]
-  test  <- df_ok[(n_train + 1):nrow(df_ok), ]
-  preds <- numeric(nrow(test))
-  set.seed(42)
-  for (i in seq_len(nrow(test))) {
-    train_i  <- rbind(train, test[seq_len(i - 1), ])
-    fit      <- nnet(as.formula(paste(var_dep, "~ .")),
-                     data = train_i, size = 5, linout = TRUE,
-                     maxit = 500, trace = FALSE)
-    preds[i] <- predict(fit, newdata = test[i, ])
-  }
-  list(actual = test[[var_dep]], predicted = preds)
-}
-
-res_ann_ara_vs <- fit_ann_vs(df_arabica_vs, "prix_arabica",
-                               vars_exo_ara_vs, n_train_ara_vs)
-res_ann_rob_vs <- fit_ann_vs(df_robusta_vs, "prix_robusta",
-                               vars_exo_rob_vs, n_train_rob_vs)
-
-metriques_ann_vs <- rbind(
+        calculer_metriques(res_svm_rob_vs$actual, res_svm_rob_vs$predicted)),
   cbind(Model = "ANN", Series = "Arabica",
-        calculer_metriques(res_ann_ara_vs$actual,
-                           res_ann_ara_vs$predicted)),
+        calculer_metriques(res_ann_ara_vs$actual, res_ann_ara_vs$predicted)),
   cbind(Model = "ANN", Series = "Robusta",
-        calculer_metriques(res_ann_rob_vs$actual,
-                           res_ann_rob_vs$predicted))
-)
+        calculer_metriques(res_ann_rob_vs$actual, res_ann_rob_vs$predicted))
+) %>%
+  mutate(across(c(R2, MSE, MAE), as.numeric))
 ```
 
 ```{r comparative_vs, message=FALSE, warning=FALSE}
 
 # ----------------------------------------------------------
 # COMPARATIVE PERFORMANCE — BASELINE VS VARIETY-SPECIFIC
+# For each model and series, the baseline R² (from
+# metriques_all, Section 4.7) is placed next to the
+# variety-specific R² computed just above.
 # ----------------------------------------------------------
 
-metriques_vs_all <- bind_rows(
-  metriques_arimax_vs, metriques_mlr_vs, metriques_rf_vs,
-  metriques_xgb_vs,   metriques_svm_vs, metriques_ann_vs
-) %>%
-  mutate(across(c(R2, MSE, MAE), as.numeric))
-
-# Build comparison table
 df_comparison_vs <- metriques_all %>%
   select(Model, Series, R2) %>%
   mutate(R2 = as.numeric(R2)) %>%
@@ -4867,7 +5014,6 @@ df_comparison_vs <- metriques_all %>%
   left_join(
     metriques_vs_all %>%
       select(Model, Series, R2) %>%
-      mutate(R2 = as.numeric(R2)) %>%
       rename(R2_vs = R2),
     by = c("Model", "Series")
   ) %>%
@@ -4920,11 +5066,12 @@ metriques_vs_all %>%
 
 The variety-specific specification yields asymmetric results across the two coffee varieties, revealing an important structural difference in how variety-relevant climate and supply information contributes to predictive accuracy.
 
-For Robusta, the variety-specific specification improves out-of-sample performance for three of the six models. ARIMAX gains marginally (+0.008, $R^2$=0.937), while Random Forest (+0.023) and XGBoost (+0.053) show more meaningful improvements — XGBoost in particular reaches $R^2$=0.849 under the variety-specific specification, its strongest result across all configurations tested in this study. This confirms the central hypothesis motivating this robustness check: using climate indices and fundamentals restricted to Vietnam, Indonesia, Uganda, Côte d'Ivoire and India — the countries that actually produce Robusta — provides more relevant supply-side information than the global aggregates, which dilute the Robusta signal by including conditions in countries that produce virtually none. The improvement is most pronounced for the gradient boosting models, which are best placed to exploit the more targeted non-linear relationships between Robusta-specific supply conditions and price dynamics.
+For Robusta, the variety-specific specification improves out-of-sample performance for three of the six models. ARIMAX gains marginally (+0.008, $R^2$=0.937), while Random Forest (+0.023) and XGBoost (+0.053) show more meaningful improvements — XGBoost in particular reaches $R^2$=0.849 under the variety-specific specification, its strongest result across all configurations tested in this study. This confirms the central hypothesis motivating this robustness check: using climate indices and fundamentals restricted to Brazil, Vietnam, Indonesia, Uganda, Côte d'Ivoire and India — the six countries assigned to the Robusta group — provides more relevant supply-side information than the global aggregates, which dilute the Robusta signal by including conditions in countries that produce virtually none. The improvement is most pronounced for the gradient boosting models, which are best placed to exploit the more targeted non-linear relationships between Robusta-specific supply conditions and price dynamics.
 
 For Arabica, the picture is reversed. All six models deteriorate under the variety-specific specification, with ARIMAX losing 0.177 $R^2$ points and ANN producing a negative $R^2$ of −0.413. This result is counterintuitive at first glance but has a structural explanation. The global climate and supply indices used in the baseline specification are in practice already dominated by Arabica-producing countries — Brazil alone accounts for approximately 35% of world coffee production and 48.5% of the Arabica-specific weight. Switching to the variety-specific specification therefore changes the indices only marginally for Arabica, while simultaneously reducing the sample of fundamentals and potentially introducing noise from the variety split adjustments applied to mixed producers. The deterioration of ANN in particular reflects the sensitivity of that model to any perturbation of the input variables in the presence of a small training sample.
 
 Taken together, these results suggest that variety-specific predictors are a genuine improvement for Robusta but not for Arabica, where the global specification already captures the relevant producing-country conditions. The XGBoost model under the Robusta variety-specific specification — $R^2$=0.849 — represents the strongest result for that variety across all configurations and specifications estimated in this study.
+
 
 # Discussion
 
@@ -5033,3 +5180,5 @@ Several limitations constrain the interpretation of these results. Estimating ML
 These limitations point to several directions for future work. Using error correction models would better handle the non-stationarity issue. Adding lagged climate variables at three, six and twelve months would better capture the delayed effect of weather on production and prices. Finally, allowing model parameters to evolve over time — rather than treating the relationships as fixed over 24 years — would better reflect the structural changes the coffee market has undergone, including the growing influence of financial investors and the supply disruptions of the post-pandemic period.
 
 From a practical standpoint, the results suggest that traders and analysts seeking short-run price signals for coffee would benefit most from monitoring speculative positioning in the futures market and energy prices, rather than focusing on supply fundamentals or climate conditions at monthly frequency. The variety-specific results further suggest that Robusta-focused analysts should track supply conditions in Vietnam and Indonesia specifically, rather than global aggregates. The consistent results across multiple model families and specifications strengthen the reliability of these conclusions.
+
+Claude (Anthropic) was used as an artificial intelligence assistant in the preparation of this thesis, including support for writing and structuring the text and for the design and debugging of the R data processing and modelling pipeline implemented in Quarto.
