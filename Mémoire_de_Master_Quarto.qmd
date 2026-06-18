@@ -22,7 +22,7 @@ lang: en
 
 ## Setup
 
-This chunk initialises the working environment for the entire pipeline. All file paths and global constants are defined here and referenced in every subsequent chunk, so that no hard-coded paths appear elsewhere in the document. Constructing all paths relative to `BASE_PATH` ensures full reproducibility across machines: relocating the data folder requires editing a single line.
+This chunk initialises the working environment for the entire pipeline. All raw input data file paths and global constants are defined here and referenced in every subsequent chunk. Output files produced later in the pipeline, including the climate indices and the final assembled datasets, are written to the shared PATH_OUTPUT directory defined here, although their individual filenames are set locally in the chunk that creates each file rather than centralised here. Constructing all paths relative to BASE_PATH means that relocating the data folder requires editing a single line.
 
 ```{r setup, message=FALSE, warning=FALSE}
 packages_requis <- c(
@@ -162,7 +162,7 @@ DATE_DEBUT_COT <- "2006-06"   # First available COT observation (June 2006)
 
 ## Overview of the Dataset
 
-This study draws on eight distinct data sources covering the period from January 2000 to December 2023, yielding 288 monthly observations for the main analysis and 96 quarterly observations for specifications that incorporate GDP growth. The analysis period begins in 2000 for three converging reasons. First, the suspension of the International Coffee Organization's export quota system in 1989 and its definitive abandonment in the early 1990s led to a decade of institutional transition, culminating in the 2001 ICO reform that established the fully liberalised price regime that prevails today. Data prior to 2000 therefore reflect a structurally different market environment and would introduce regime-change breaks that complicate time series modelling. Second, the ERA5 reanalysis dataset used for climate variables reaches its highest spatial and temporal reliability from the late 1990s onward, as the assimilation of satellite observations improves significantly over this period. Third, several key variables — including the CFTC Disaggregated COT report and Robusta futures prices from Refinitiv — are either unavailable or unreliable before this period. The analysis ends in December 2023, the last month for which all data sources are simultaneously available at the time of data collection.
+This study draws on eight distinct data sources covering the period from January 2000 to December 2023, yielding 288 monthly observations for the main analysis. The choice of this starting point rests on three considerations. First, the International Coffee Organization suspended its export quota system in 1989, and its definitive abandonment over the following years produced a decade of institutional transition that reshaped the price formation environment prevailing over the analysis period (Lewin et al., 2004). Coffee price data from before 2000 therefore reflect a structurally different market environment, and including them would introduce regime-change breaks that complicate time series modelling. Second, the ERA5 reanalysis dataset used for the climate variables reaches its highest spatial and temporal reliability from 2000 onward, corresponding to the transition to the modern satellite era (Hersbach et al., 2020). Third, two variables used throughout the analysis remain only partially available within this window: the CFTC Disaggregated COT report starts in June 2006, and Robusta futures prices from Refinitiv start in January 2008. The analysis ends in December 2023, the last month for which all data sources were simultaneously available at the time of data collection.
 
 This chunk produces the variable summary table presented in the text. Each row corresponds to one variable retained in the final dataset, grouped by category. The table is built manually as a data frame so that the ordering and grouping of rows can be controlled precisely, then rendered using `kableExtra` with row-merging on the Category column for readability.
 
@@ -176,21 +176,19 @@ table_vars <- data.frame(
     "Dependent", "Dependent",
     "Spillovers", "Spillovers",
     "Macroeconomic", "Macroeconomic", "Macroeconomic", "Macroeconomic",
-    "Macroeconomic",
     "Fundamentals", "Fundamentals", "Fundamentals", "Fundamentals",
     "Speculation",
     "Climate", "Climate", "Climate"
   ),
   Variable = c(
     "Arabica futures price (ICE)",
-    "Robusta futures price (LIFFE)",
+    "Robusta futures price (ICE Futures Europe)",
     "Sugar No.11 futures price (ICE)",
     "Cocoa futures price (ICE NY)",
     "WTI crude oil price",
     "US Dollar Index (DXY)",
     "Federal Funds Rate",
     "US Consumer Price Index (CPI)",
-    "OECD real GDP growth rate",
     "World coffee production",
     "World coffee consumption",
     "World coffee exports",
@@ -209,7 +207,6 @@ table_vars <- data.frame(
     "Investing.com",
     "FRED (Federal Reserve)",
     "FRED (Federal Reserve)",
-    "OECD Data Explorer",
     "USDA FAS PSD Online",
     "USDA FAS PSD Online",
     "USDA FAS PSD Online",
@@ -223,7 +220,6 @@ table_vars <- data.frame(
     "Monthly", "Monthly (from 2008)",
     "Monthly", "Monthly",
     "Monthly", "Monthly", "Monthly", "Monthly",
-    "Quarterly",
     "Annual (expanded to monthly)",
     "Annual (expanded to monthly)",
     "Annual (expanded to monthly)",
@@ -244,19 +240,19 @@ kable(table_vars,
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = TRUE) %>%
   collapse_rows(columns = 1, valign = "middle")
+
+stopifnot(nrow(table_vars) == ncol(dataset_mensuel) - 2)
 ```
 
-Two data availability constraints deserve explicit acknowledgement. First, Robusta futures prices from Refinitiv are available only from 2008 onward; the 96 months spanning 2000–2007 are therefore missing for this variable, and Robusta models are estimated on the 2008–2023 sub-period. Second, the CFTC Disaggregated COT report — which distinguishes Managed Money from commercial traders — was introduced in June 2006. The net speculative position variable accordingly contains missing values for the 2000–2006 period, which is documented and handled in the modelling phase.
+Two data availability constraints deserve explicit acknowledgement. First, Robusta futures prices from Refinitiv are available only from 2008 onward; the 96 months spanning 2000–2007 are therefore missing for this variable, and Robusta models are estimated on the 2008–2023 sub-period. Second, the CFTC Disaggregated COT report, which distinguishes Managed Money from commercial hedgers, was introduced in June 2006. The net speculative position variable accordingly contains missing values for the 77 months preceding June 2006, which is documented and handled in the modelling phase.
 
 ## Dependent Variables: Coffee Futures Prices
 
-The two dependent variables are the monthly average closing prices of Arabica coffee futures traded on ICE Futures U.S. (contract symbol KC) and Robusta coffee futures traded on ICE Futures Europe, the former London International Financial Futures Exchange (contract symbol RC). Both series are extracted from Refinitiv via the CEDIF data facility at the University of Lausanne, which constitutes the primary source for price data in this study. Arabica and Robusta are treated as two distinct dependent variables and modelled separately throughout the analysis, reflecting their different market structures, consumer bases and price determinants. A combined coffee price index is not constructed, as aggregation would obscure the variety-specific dynamics that this study aims to capture.
+The two dependent variables are the monthly average closing prices of Arabica coffee futures traded on ICE Futures U.S. (contract symbol KC) and Robusta coffee futures traded on ICE Futures Europe, formerly the London International Financial Futures and Options Exchange (contract symbol RC). Both series are extracted from Refinitiv via the CEDIF data facility at the University of Lausanne, which constitutes the primary source for price data in this study. Arabica and Robusta are treated as two distinct dependent variables and modelled separately throughout the analysis, reflecting their different market structures, consumer bases and price determinants. A combined coffee price index is not constructed, as aggregation would obscure the variety-specific dynamics that this study aims to capture.
 
-Daily closing prices are aggregated to monthly frequency by computing the arithmetic mean of all trading days within each calendar month. This averaging approach is preferred to using the last trading day's price because it is less sensitive to end-of-month volatility spikes associated with contract rollovers, and more representative of the price environment faced by market participants throughout the month.
+The use of Refinitiv as the primary source for futures price data ensures institutional-grade data quality, with prices reflecting actual transaction records from the ICE exchanges rather than aggregated or estimated values from secondary sources.
 
-The use of Refinitiv Eikon as the primary source for futures price data ensures institutional-grade data quality, with prices reflecting actual transaction records from the ICE and LIFFE exchanges rather than aggregated or estimated values from secondary sources.
-
-This chunk reads the four Refinitiv price series — Arabica, Robusta, Cocoa and Sugar — from their raw Excel files and aggregates them from daily to monthly frequency. A single reusable function handles the parsing logic for all four files, which share the same Refinitiv export format. The chunk then builds the time series plots for the two dependent variables.
+This chunk reads the four Refinitiv price series, Arabica, Robusta, Cocoa and Sugar, from their raw Excel files and aggregates them from daily to monthly frequency. A single reusable function handles the parsing logic for all four files, which share the same Refinitiv export format. The chunk then builds the time series plots for the two dependent variables.
 
 ```{r prix_arabica_robusta, message = FALSE}
 
@@ -359,28 +355,28 @@ p1 <- ggplot(df_prix, aes(x = date_fmt, y = prix_arabica)) +
 p2 <- ggplot(filter(df_prix, !is.na(prix_robusta)),
              aes(x = date_fmt, y = prix_robusta)) +
   geom_line(color = "#2E8B57", linewidth = 0.8) +
-  labs(title    = "Robusta futures price (LIFFE), 2008–2023",
-       subtitle = "Monthly average closing price (USD/tonne). Available from 2008 only.",
-       x = NULL, y = "USD/tonne") +
+  labs(title    = "Robusta futures price (ICE Futures Europe), 2008–2023",
+     subtitle = "Monthly average closing price (USD/tonne). Available from 2008 only.",
+     x = NULL, y = "USD/tonne") +
   theme_minimal(base_size = 11) +
   scale_x_date(date_breaks = "2 years", date_labels = "%Y")
 
 gridExtra::grid.arrange(p1, p2, ncol = 1)
 ```
 
-The Arabica price series covers the full 2000–2023 period and exhibits the characteristic volatility of agricultural commodity markets, with a major price spike in 2010–2011 driven by supply shortfalls in Brazil and Colombia, and a renewed surge in 2021–2022 associated with adverse weather conditions and post-pandemic supply chain disruptions. The Robusta series, available from 2008, follows a broadly similar trajectory but at lower absolute price levels, reflecting its use primarily in soluble coffee and blends.
+The Arabica price series covers the full 2000–2023 period and exhibits the characteristic volatility of agricultural commodity markets. The Robusta series, available from 2008, follows a broadly similar trajectory but at lower absolute price levels, reflecting its primary use in soluble coffee and blends.
 
 ## Market Spillover Variables
 
-Sugar and cocoa prices are included as potential spillover variables. Coffee, sugar and cocoa are all tropical agricultural commodities subject to similar climate shocks and traded on overlapping futures markets. Land substitution between coffee and sugar cultivation in Brazil — the world's largest producer of both — creates a supply-side linkage between the two markets. The Sugar No.11 contract (raw cane sugar, ICE Futures U.S.) and the ICE New York cocoa contract are used, both sourced from Refinitiv via CEDIF and aggregated to monthly frequency using the same procedure as the coffee price series.
+Sugar and cocoa prices are included as potential spillover variables. Coffee, sugar and cocoa are all tropical agricultural commodities subject to similar climate shocks and traded on overlapping futures markets. Land substitution between coffee and sugar cultivation in Brazil, the world's largest producer of both, creates a supply-side linkage between the two markets. The Sugar No.11 contract (raw cane sugar, ICE Futures U.S.) and the ICE New York cocoa contract are used, both sourced from Refinitiv via CEDIF and aggregated to monthly frequency using the same procedure as the coffee price series.
 
 ## Macroeconomic Variables
 
-Four macroeconomic variables are included to capture the broader financial and monetary environment that influences commodity prices. All four are sourced from the Federal Reserve Economic Data (FRED) database maintained by the Federal Reserve Bank of St. Louis and are available at monthly frequency.
+Four macroeconomic variables are included to capture the broader financial and monetary environment that influences commodity prices. Three are sourced from the Federal Reserve Economic Data (FRED) database maintained by the Federal Reserve Bank of St. Louis; the fourth, the US Dollar Index, is sourced from Investing.com. All four are available at monthly frequency.
 
-The WTI crude oil price captures the energy cost dimension of coffee production and transportation, as well as the broad commodity price cycle that tends to co-move across raw materials. The US Dollar Index (DXY), sourced from Investing.com, measures the value of the US dollar against a basket of major currencies; since coffee futures are denominated in US dollars, a stronger dollar tends to depress prices for non-dollar buyers, reducing global demand. The Federal Funds Rate proxies the monetary policy stance of the Federal Reserve, which influences global capital flows, risk appetite and commodity price dynamics. The Consumer Price Index (CPI) captures the general inflation environment.
+The WTI crude oil price captures the energy cost dimension of coffee production and transportation, as well as the broad commodity price cycle that tends to co-move across raw materials. The US Dollar Index (DXY), sourced from Investing.com, measures the value of the US dollar against a basket of major currencies; since coffee futures are denominated in US dollars, a stronger dollar tends to depress prices for non-dollar buyers, reducing global demand. The Federal Funds Rate proxies the monetary policy stance of the Federal Reserve, which influences global capital flows, risk appetite and commodity price dynamics. The Consumer Price Index (CPI) captures the general US inflation environment, controlling for the broad upward drift in nominal commodity prices that accompanies overall price-level changes, independent of coffee-specific supply and demand conditions.
 
-This chunk reads the four macroeconomic variables from their respective source files and produces a four-panel time series plot. Three series — CPI, WTI and the Federal Funds Rate — are downloaded from FRED and share an identical CSV structure, handled by a single reusable function. The Dollar Index (DXY) requires separate parsing because its Investing.com export uses a different date format and embeds numeric commas in price values.
+This chunk reads the four macroeconomic variables from their respective source files and produces a four-panel time series plot. Three series, CPI, WTI and the Federal Funds Rate, are downloaded from FRED and share an identical CSV structure, handled by a single reusable function. The Dollar Index (DXY) requires separate parsing because its Investing.com export uses a different date format and embeds numeric commas in price values.
 
 ```{r macro}
 
@@ -505,13 +501,13 @@ write.csv(fed, file.path(PATH_OUTPUT, "fed.csv"), row.names = FALSE)
 write.csv(dxy, file.path(PATH_OUTPUT, "dxy.csv"), row.names = FALSE)
 ```
 
-For models estimated at quarterly frequency — specifically those incorporating OECD GDP growth — all monthly macroeconomic variables are aggregated to quarterly frequency by computing the mean of the three constituent months. The OECD quarterly real GDP growth rate (growth rate period-on-period) is sourced from the OECD Data Explorer and covers the 38 OECD member countries, which collectively represent the principal coffee-consuming economies. This variable captures the demand-side dynamics of the global coffee market: when economic activity accelerates in OECD countries, per-capita coffee consumption tends to increase, exerting upward pressure on prices.
+The four macroeconomic series exhibit markedly different dynamics over the analysis period. WTI crude oil displays the highest volatility of the four, including the 2008 spike above 130 USD per barrel followed by a sharp collapse, a renewed decline in 2014–2016, a deep trough in 2020 coinciding with the pandemic-driven collapse in oil demand, and a resurgence above 100 USD per barrel in 2022. The US Dollar Index follows a broad multi-year cycle, declining from a peak near 120 in the early 2000s to a low near 72 by 2008, before recovering through the 2010s and rising sharply from 2021 onward. The Federal Funds Rate traces the well-documented path of US monetary policy over the period, falling to near zero following the 2008 financial crisis, remaining near zero for an extended period, and rising sharply again from 2022 in response to elevated inflation. US CPI, by contrast, follows a smooth and persistent upward trend throughout the period, with a visible acceleration in its slope from 2021 onward.
 
 ## Market Fundamentals: USDA Production, Supply and Distribution
 
-Supply-and-demand fundamentals are sourced from the USDA Foreign Agricultural Service Production, Supply and Distribution (PSD) Online database, which publishes annual crop-year estimates for over 190 countries across all major agricultural commodities. Four variables are retained: world coffee production, world domestic consumption, world exports and world ending stocks. These are aggregated to world totals by summing across all countries for each crop year.
+Supply-and-demand fundamentals are sourced from the USDA Foreign Agricultural Service Production, Supply and Distribution (PSD) Online database, which publishes annual crop-year estimates for the United States and key producing and consuming countries across all major agricultural commodities. Four variables are retained: world coffee production, world domestic consumption, world exports and world ending stocks. These are aggregated to world totals by summing across all countries for each crop year.
 
-This chunk reads the USDA FAS PSD export file, aggregates country-level data to world totals for the four supply-and-demand variables, and expands the resulting annual series to monthly frequency by repeating each crop-year value across the twelve months of that year. The raw file uses an unusual structure — a single-column CSV embedded inside an Excel file — which requires a two-step parsing approach before standard tidyverse operations can be applied.
+This chunk reads the USDA FAS PSD export file, aggregates country-level data to world totals for the four supply-and-demand variables, and expands the resulting annual series to monthly frequency by repeating each crop-year value across the twelve months of that year. The raw file uses an unusual structure, a single-column CSV embedded inside an Excel file, which requires a two-step parsing approach before standard tidyverse operations can be applied.
 
 ```{r usda, message=FALSE, warning=FALSE}
 
@@ -643,7 +639,7 @@ gridExtra::grid.arrange(
 )
 ```
 
-Since USDA data are published at annual (crop-year) frequency, they are expanded to monthly frequency by repeating each year's value across the 12 calendar months of that year. This approach assumes that market participants incorporate supply-demand fundamentals into their pricing decisions throughout the entire crop year. While the USDA releases monthly updates to its World Agricultural Supply and Demand Estimates (WASDE), the annual PSD figures used here represent end-of-year consolidated estimates. Repeating the annual value across twelve months is a standard simplification when monthly supply-demand data are unavailable.
+This expansion procedure assumes that market participants incorporate annual supply-demand fundamentals into their pricing decisions throughout the crop year, rather than reacting only at the point of the annual USDA release. Since coffee supply-demand fundamentals are reported by the USDA only at crop-year frequency, the annual observation is carried forward to each month of the corresponding crop year. This approach enables the inclusion of supply-demand information while preserving the monthly structure of the dataset.
 
 ## Climate Variables
 
@@ -1994,7 +1990,7 @@ The Managed Money net position on the Coffee C contract shows considerable varia
 
 ## Final Dataset Assembly
 
-This chunk assembles the two final datasets used throughout the modelling phase. It first reads the OECD GDP series and the four climate/speculative indices saved to disk by earlier chunks, then joins all variables onto a complete monthly date spine to form the monthly dataset. The quarterly dataset is derived from the monthly one by averaging within each quarter and merging in the GDP growth variable, which is only available at quarterly frequency. Both datasets are written to disk as the definitive analytical inputs.
+This chunk assembles the final dataset used throughout the modelling phase. It reloads the four climate and speculative indices saved to disk by earlier chunks, then joins all variables onto a complete monthly date spine to form the monthly dataset. The result is written to disk as the definitive analytical input for all subsequent chunks.
 
 ```{r assemblage, message=FALSE}
 
@@ -2004,37 +2000,7 @@ fed <- read_csv(file.path(PATH_OUTPUT, "fed.csv"), show_col_types = FALSE)
 dxy <- read_csv(file.path(PATH_OUTPUT, "dxy.csv"), show_col_types = FALSE)
 
 # ----------------------------------------------------------
-# STEP 1 — READ THE OECD QUARTERLY GDP SERIES
-# The OECD export file has an irregular structure: quarter
-# labels are stored in row 5 starting from column 3, and
-# the corresponding growth rates are in row 8 at the same
-# column positions. Both rows are extracted directly by
-# index rather than by column name.
-# The variable retained is the period-on-period growth rate
-# for the aggregate of all 38 OECD member countries, which
-# collectively represent the principal coffee-consuming
-# economies.
-# ----------------------------------------------------------
-
-df_pib_raw <- read_excel(FICHIER_PIB, col_names = FALSE)
-
-# Extract quarter labels from row 5 (columns 3 onward)
-trimestres <- as.character(df_pib_raw[5, 3:ncol(df_pib_raw)])
-
-# Extract growth rate values from row 8 (same column range)
-pib_vals <- as.numeric(df_pib_raw[8, 3:ncol(df_pib_raw)])
-
-df_pib <- data.frame(trimestre  = trimestres,
-                     pib_growth = pib_vals,
-                     stringsAsFactors = FALSE) %>%
-  # Keep only valid quarter rows (labels containing "Q")
-  filter(!is.na(trimestre), !is.na(pib_growth), grepl("Q", trimestre)) %>%
-  filter(trimestre >= "2000-Q1" & trimestre <= "2023-Q4") %>%
-  arrange(trimestre)
-
-
-# ----------------------------------------------------------
-# STEP 2 — RELOAD INDICES SAVED TO DISK
+# STEP 1 — RELOAD INDICES SAVED TO DISK
 # The four series computed in earlier chunks are reloaded
 # from their CSV files rather than carried in memory. This
 # makes the assembly chunk self-contained: it can be re-run
@@ -2056,7 +2022,7 @@ df_cot_f    <- read_csv(file.path(PATH_OUTPUT, "cot_net_mm_2006_2023.csv"),
 
 
 # ----------------------------------------------------------
-# STEP 3 — BUILD THE MONTHLY DATASET
+# STEP 2 — BUILD THE MONTHLY DATASET
 # A complete date spine covering every month from January
 # 2000 to December 2023 (288 rows) is created first. All
 # variable series are then left-joined onto this spine by
@@ -2094,66 +2060,34 @@ dataset_mensuel <- dates_cibles %>%
 
 
 # ----------------------------------------------------------
-# STEP 4 — BUILD THE QUARTERLY DATASET
-# The quarterly dataset is derived from the monthly one by
-# averaging all numeric variables within each quarter. The
-# quarter identifier is constructed from the month number:
-# months 1-3 -> Q1, 4-6 -> Q2, 7-9 -> Q3, 10-12 -> Q4.
-# The OECD GDP growth rate is then joined by quarter label,
-# as it is only available at quarterly frequency and cannot
-# be averaged from monthly observations.
-# ----------------------------------------------------------
-
-dataset_trimestriel <- dataset_mensuel %>%
-  # Derive the quarter label from the date string
-  mutate(trimestre = paste0(
-    substr(date, 1, 4), "-Q",
-    ceiling(as.integer(substr(date, 6, 7)) / 3)
-  )) %>%
-  group_by(trimestre) %>%
-  # Average all numeric columns within each quarter
-  summarise(across(where(is.numeric), ~mean(.x, na.rm = TRUE)),
-            .groups = "drop") %>%
-  # Merge in the GDP growth rate (quarterly only variable)
-  left_join(df_pib, by = c("trimestre" = "trimestre")) %>%
-  filter(trimestre >= "2000-Q1" & trimestre <= "2023-Q4") %>%
-  arrange(trimestre)
-
-
-# ----------------------------------------------------------
-# STEP 5 — SAVE BOTH DATASETS TO DISK
+# STEP 3 — SAVE THE DATASET TO DISK
 # The date_fmt column (a Date object used only for plotting)
-# is dropped before saving to keep the CSV files clean.
-# These two files are the definitive analytical inputs for
-# all modelling chunks that follow.
+# is dropped before saving to keep the CSV file clean. This
+# file is the definitive analytical input for all modelling
+# chunks that follow.
 # ----------------------------------------------------------
 
 write.csv(dataset_mensuel %>% select(-date_fmt),
           file.path(PATH_OUTPUT, "dataset_mensuel_final.csv"),
           row.names = FALSE)
-
-write.csv(dataset_trimestriel,
-          file.path(PATH_OUTPUT, "dataset_trimestriel_final.csv"),
-          row.names = FALSE)
 ```
 
-This chunk produces a compact summary table of the two final datasets. Observation and variable counts are computed dynamically from the assembled data frames rather than hard-coded, so the table updates automatically if the analysis period or variable set changes. The monthly dataset loses two columns in the count (`date` and `date_fmt`) since these are identifiers rather than analytical variables.
+This chunk produces a compact summary of the final dataset. Observation and variable counts are computed dynamically from the assembled data frame rather than hard-coded, so the table updates automatically if the analysis period or variable set changes. The dataset loses two columns in the count (`date` and `date_fmt`) since these are identifiers rather than analytical variables.
 
 ```{r summar final datasets, message=FALSE}
 
-# Build the summary table dynamically from the assembled datasets.
-# Variable counts exclude the date identifier columns:
-#   - dataset_mensuel  has 2 non-variable columns: date and date_fmt
-#   - dataset_trimestriel has none (date_fmt was never added to it)
+# Build the summary table dynamically from the assembled dataset.
+# Variable counts exclude the two date identifier columns
+# (date and date_fmt).
 df_summary <- data.frame(
-  Dataset      = c("Monthly", "Quarterly"),
-  Period       = c("2000-01 to 2023-12", "2000-Q1 to 2023-Q4"),
-  Observations = c(nrow(dataset_mensuel), nrow(dataset_trimestriel)),
-  Variables    = c(ncol(dataset_mensuel) - 2, ncol(dataset_trimestriel))
+  Dataset      = "Monthly",
+  Period       = "2000-01 to 2023-12",
+  Observations = nrow(dataset_mensuel),
+  Variables    = ncol(dataset_mensuel) - 2
 )
 
 kable(df_summary,
-      caption   = "Summary of the final datasets",
+      caption   = "Summary of the final dataset",
       col.names = c("Dataset", "Period", "Observations", "Variables"),
       booktabs  = TRUE,
       row.names = FALSE) %>%
@@ -2161,7 +2095,7 @@ kable(df_summary,
                 font_size = 11, full_width = FALSE)
 ```
 
-The final datasets are summarised in the table above. The monthly dataset covers the full 2000–2023 period with 288 observations across 16 variables. The quarterly dataset aggregates these to 96 observations and incorporates two additional variables — the OECD real GDP growth rate and the quarter identifier — bringing the total to 18 variables.
+The final dataset is summarised in the table above. It covers the full 2000–2023 period with 288 observations across 16 variables.
 
 This chunk audits the missing value structure of the monthly dataset and displays only the variables that contain at least one missing observation. All three gaps identified here are expected and documented: they arise from data availability constraints established in the data collection phase, not from processing errors. The table is computed dynamically so that counts update automatically if the dataset changes.
 
@@ -3121,26 +3055,22 @@ fit_mlr <- function(df, var_dep, n_train) {
   # reused identically by all six models.
   # The intersect() call is a safety check: if a predictor were
   # ever missing from df, it is simply skipped here instead of
-  # making the function crash.
+  # making the function crash. No complete.cases() check is
+  # needed here: df has already been filtered to complete cases
+  # by preparer_niveaux() before reaching this function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
   vars_a_garder <- c(var_dep, vars_exo_disponibles)
   df_modele <- df[, vars_a_garder]
 
-  # STEP 2 — Drop any row with at least one missing value.
-  # This is what restricts the Arabica sample to start in
-  # June 2006 (the first month with COT data available).
-  lignes_completes <- complete.cases(df_modele)
-  df_modele <- df_modele[lignes_completes, ]
-
-  # STEP 3 — Split into the initial training set and the test
+  # STEP 2 — Split into the initial training set and the test
   # set, using the row count computed in the preprocessing
   # chunk (80% / 20% split).
-  n_total      <- nrow(df_modele)
+  n_total       <- nrow(df_modele)
   donnees_train <- df_modele[1:n_train, ]
   donnees_test  <- df_modele[(n_train + 1):n_total, ]
   n_test        <- nrow(donnees_test)
 
-  # STEP 4 — Walk-forward loop.
+  # STEP 3 — Walk-forward loop.
   # At forecasting step i, the model is re-estimated using
   # ALL observations available up to that point: the initial
   # training set, plus every test-period row already passed
@@ -3175,7 +3105,7 @@ fit_mlr <- function(df, var_dep, n_train) {
     predictions[i]  <- predict(modele_ols, newdata = ligne_a_predire)
   }
 
-  # STEP 5 — Return the observed and predicted test values
+  # STEP 4 — Return the observed and predicted test values
   valeurs_observees <- donnees_test[[var_dep]]
   list(actual = valeurs_observees, predicted = predictions)
 }
@@ -3511,27 +3441,27 @@ library(randomForest)
 fit_rf <- function(df, var_dep, n_train) {
 
   # STEP 1 — Keep only the columns this model needs, the same
-  # safety check as in the MLR function.
+  # safety check as in the MLR function. No complete.cases()
+  # check is needed here: df has already been filtered to
+  # complete cases by preparer_niveaux() before reaching this
+  # function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
   vars_a_garder <- c(var_dep, vars_exo_disponibles)
   df_modele <- df[, vars_a_garder]
 
-  # STEP 2 — Drop rows with missing values.
-  df_modele <- df_modele[complete.cases(df_modele), ]
-
-  # STEP 3 — Min-Max scale every column (including the
+  # STEP 2 — Min-Max scale every column (including the
   # dependent variable) to the [0, 1] range. sapply() applies
   # minmax_scale() to each column in turn and returns a matrix,
   # which is then converted back to a data frame.
   df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
 
-  # STEP 4 — Split into the initial training set and the test set.
+  # STEP 3 — Split into the initial training set and the test set.
   n_total       <- nrow(df_modele_scaled)
   donnees_train <- df_modele_scaled[1:n_train, ]
   donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
   n_test        <- nrow(donnees_test)
 
-  # STEP 5 — Walk-forward loop.
+  # STEP 4 — Walk-forward loop.
   # At each step, a brand new forest of 500 trees is grown on
   # the expanding training window (initial training set plus
   # all test rows already passed), exactly as in the MLR loop.
@@ -3555,7 +3485,7 @@ fit_rf <- function(df, var_dep, n_train) {
     predictions[i]  <- predict(foret, newdata = ligne_a_predire)
   }
 
-  # STEP 6 — Variable importance scores from the forest grown
+  # STEP 5 — Variable importance scores from the forest grown
   # at the LAST loop iteration (the one with the most training
   # data) are kept for the importance plot later in the document.
   scores_importance <- importance(foret)
@@ -3629,19 +3559,19 @@ library(xgboost)
 
 fit_xgb <- function(df, var_dep, n_train) {
 
-  # STEP 1 — Keep only the columns this model needs.
+  # STEP 1 — Keep only the columns this model needs. No
+  # complete.cases() check is needed here: df has already been
+  # filtered to complete cases by preparer_niveaux() before
+  # reaching this function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
   vars_a_garder <- c(var_dep, vars_exo_disponibles)
   df_modele <- df[, vars_a_garder]
 
-  # STEP 2 — Drop rows with missing values.
-  df_modele <- df_modele[complete.cases(df_modele), ]
-
-  # STEP 3 — Min-Max scale every column (including the
+  # STEP 2 — Min-Max scale every column (including the
   # dependent variable) to the [0, 1] range.
   df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
 
-  # STEP 4 — Separate the predictor matrix from the target
+  # STEP 3 — Separate the predictor matrix from the target
   # vector, as required by xgboost(). X excludes var_dep;
   # y is var_dep alone.
   colonnes_predicteurs <- setdiff(colnames(df_modele_scaled), var_dep)
@@ -3651,7 +3581,7 @@ fit_xgb <- function(df, var_dep, n_train) {
   n_total <- length(y)
   n_test  <- n_total - n_train
 
-  # STEP 5 — Walk-forward loop.
+  # STEP 4 — Walk-forward loop.
   # At step i, the model is trained on rows 1 to (n_train + i - 1)
   # of X and y — the expanding training window — and used to
   # predict row (n_train + i), the next unseen observation.
@@ -3712,7 +3642,7 @@ XGBoost delivers the strongest out-of-sample performance among the ML models for
 
 This chunk estimates the Support Vector Machine model for both series using a radial basis function (RBF) kernel. The structure mirrors the MLR and Random Forest functions exactly. The two key hyperparameters — the regularisation parameter `cost` and the kernel width `gamma` — are set to fixed values without grid search, a simplification acknowledged in the results section as a likely source of the SVM's relatively weaker performance compared to the other ML models.
 
-```{r, svm_tuning, message=FALSE, warning=FALSE}
+```{r svm_tuning, message=FALSE, warning=FALSE}
 tuner_svm <- function(df, var_dep, n_train) {
 
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
@@ -3792,25 +3722,25 @@ library(e1071)
 
 fit_svm <- function(df, var_dep, n_train, cost = 1, gamma = 0.1) {
 
-  # STEP 1 — Keep only the columns this model needs.
+  # STEP 1 — Keep only the columns this model needs. No
+  # complete.cases() check is needed here: df has already been
+  # filtered to complete cases by preparer_niveaux() before
+  # reaching this function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
   vars_a_garder <- c(var_dep, vars_exo_disponibles)
   df_modele <- df[, vars_a_garder]
 
-  # STEP 2 — Drop rows with missing values.
-  df_modele <- df_modele[complete.cases(df_modele), ]
-
-  # STEP 3 — Min-Max scale every column (including the
+  # STEP 2 — Min-Max scale every column (including the
   # dependent variable) to the [0, 1] range.
   df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
 
-  # STEP 4 — Split into the initial training set and the test set.
+  # STEP 3 — Split into the initial training set and the test set.
   n_total       <- nrow(df_modele_scaled)
   donnees_train <- df_modele_scaled[1:n_train, ]
   donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
   n_test        <- nrow(donnees_test)
 
-  # STEP 5 — Walk-forward loop.
+  # STEP 4 — Walk-forward loop.
   # Identical expanding-window logic to the MLR and Random
   # Forest loops: at each step, the SVM is refitted from
   # scratch on the initial training set plus all test rows
@@ -3870,7 +3800,7 @@ The SVM with a radial basis function kernel and tuned hyperparameters delivers a
 
 This chunk estimates the Artificial Neural Network model for both series using the `nnet` package, which implements a single hidden layer feedforward network trained by backpropagation. The architecture and training parameters are kept deliberately modest to limit overfitting on the available training samples, which reach a maximum of approximately 200 observations at the end of the walk-forward loop.
 
-```{r, ann_tuning, message=FALSE, warning=FALSE}
+```{r ann_tuning, message=FALSE, warning=FALSE}
 tuner_ann <- function(df, var_dep, n_train) {
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
   df_modele <- df[, c(var_dep, vars_exo_disponibles)]
@@ -3947,25 +3877,25 @@ library(nnet)
 
 fit_ann <- function(df, var_dep, n_train, size = 5) {
 
-  # STEP 1 — Keep only the columns this model needs.
+  # STEP 1 — Keep only the columns this model needs. No
+  # complete.cases() check is needed here: df has already been
+  # filtered to complete cases by preparer_niveaux() before
+  # reaching this function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
   vars_a_garder <- c(var_dep, vars_exo_disponibles)
   df_modele <- df[, vars_a_garder]
 
-  # STEP 2 — Drop rows with missing values.
-  df_modele <- df_modele[complete.cases(df_modele), ]
-
-  # STEP 3 — Min-Max scale every column (including the
+  # STEP 2 — Min-Max scale every column (including the
   # dependent variable) to the [0, 1] range.
   df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
 
-  # STEP 4 — Split into the initial training set and the test set.
+  # STEP 3 — Split into the initial training set and the test set.
   n_total       <- nrow(df_modele_scaled)
   donnees_train <- df_modele_scaled[1:n_train, ]
   donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
   n_test        <- nrow(donnees_test)
 
-  # STEP 5 — Walk-forward loop.
+  # STEP 4 — Walk-forward loop.
   # Identical expanding-window logic to the MLR, Random Forest
   # and SVM loops: at each step, the network is reinitialised
   # and retrained from scratch on the initial training set plus
@@ -5072,6 +5002,382 @@ For Arabica, the picture is reversed. All six models deteriorate under the varie
 
 Taken together, these results suggest that variety-specific predictors are a genuine improvement for Robusta but not for Arabica, where the global specification already captures the relevant producing-country conditions. The XGBoost model under the Robusta variety-specific specification — $R^2$=0.849 — represents the strongest result for that variety across all configurations and specifications estimated in this study.
 
+## Robustness Check: OECD GDP Growth (Quarterly Specification)
+
+This robustness check addresses a variable suggested during supervision: OECD real GDP growth, a demand-side macroeconomic indicator published only at quarterly frequency, with no monthly equivalent available. Incorporating it therefore requires moving estimation to quarterly frequency rather than approximating it within the monthly pipeline. Because changing frequency and adding a predictor are two distinct changes, three configurations are compared rather than two: the monthly baseline already reported in Section 4.7, a quarterly configuration that aggregates the same 14 baseline predictors without GDP growth, and a quarterly configuration that adds GDP growth as a fifteenth predictor. Comparing the second and third configurations isolates the marginal contribution of GDP growth at a fixed quarterly frequency. All six models are re-estimated using the generic functions already defined for the disaggregated and variety-specific robustness checks above.
+
+```{r robustness_pib_data, message=FALSE, warning=FALSE}
+# ----------------------------------------------------------
+# STEP 1 — READ THE OECD QUARTERLY GDP SERIES
+# Quarter labels are in row 5, growth rates in row 8, both
+# starting at column 3 of the raw OECD export file. The
+# "trimestre" label is renamed to "date" so that the existing
+# preparer_niveaux_vs() function (Section 4.9) can be reused
+# unchanged in the next chunk — it only requires a column
+# called "date" to sort on, regardless of its granularity.
+# ----------------------------------------------------------
+
+df_pib_raw <- read_excel(FICHIER_PIB, col_names = FALSE)
+
+trimestres <- as.character(df_pib_raw[5, 3:ncol(df_pib_raw)])
+pib_vals   <- as.numeric(df_pib_raw[8, 3:ncol(df_pib_raw)])
+
+df_pib <- data.frame(date       = trimestres,
+                     pib_growth = pib_vals,
+                     stringsAsFactors = FALSE) %>%
+  filter(!is.na(date), !is.na(pib_growth), grepl("Q", date)) %>%
+  filter(date >= "2000-Q1" & date <= "2023-Q4") %>%
+  arrange(date)
+
+
+# ----------------------------------------------------------
+# STEP 2 — AGGREGATE THE MONTHLY DATASET TO QUARTERLY
+# Every numeric column of dataset_mensuel is averaged within
+# each quarter. na.rm = TRUE means a quarter with only one or
+# two valid months (e.g. June 2006 for cot_net_mm, the first
+# month the COT report exists) still produces a non-missing
+# average from the months available — a known simplification
+# inherited from the original quarterly aggregation, not a
+# new issue introduced here. Quarters with zero valid months
+# (e.g. cot_net_mm before mid-2006, prix_robusta before 2008)
+# correctly produce NaN, which is.na() treats as missing.
+# ----------------------------------------------------------
+
+dataset_trimestriel_base <- dataset_mensuel %>%
+  mutate(date = paste0(
+    substr(date, 1, 4), "-Q",
+    ceiling(as.integer(substr(date, 6, 7)) / 3)
+  )) %>%
+  select(-date_fmt) %>%
+  group_by(date) %>%
+  summarise(across(where(is.numeric), ~mean(.x, na.rm = TRUE)),
+            .groups = "drop") %>%
+  filter(date >= "2000-Q1" & date <= "2023-Q4") %>%
+  arrange(date)
+
+
+# ----------------------------------------------------------
+# STEP 3 — BUILD THE TWO QUARTERLY DATASET VARIANTS
+# dataset_trimestriel_nogdp: the 14 baseline predictors at
+# quarterly frequency, no GDP — isolates the frequency effect.
+# dataset_trimestriel_gdp: the same base, plus GDP growth —
+# the variant actually of interest in this robustness check.
+# ----------------------------------------------------------
+
+dataset_trimestriel_nogdp <- dataset_trimestriel_base
+
+dataset_trimestriel_gdp <- dataset_trimestriel_base %>%
+  left_join(df_pib, by = "date")
+
+cat("Quarterly base — rows:", nrow(dataset_trimestriel_base), "\n")
+cat("Quarters with available GDP growth:",
+    sum(!is.na(dataset_trimestriel_gdp$pib_growth)), "\n")
+```
+
+The quarterly base dataset contains 96 rows, matching the expected 288 months divided into 96 quarters with full coverage from 2000-Q1 to 2023-Q4. All 96 quarters have an available GDP growth observation, confirming that the OECD series introduces no additional missing-data constraint beyond those already present in the baseline predictors.
+
+```{r robustness_pib_split, message=FALSE, warning=FALSE}
+# ----------------------------------------------------------
+# STEP 4 — VARIABLE LISTS FOR THE TWO VARIANTS
+# The "no GDP" variant reuses the global vars_exo list (14
+# predictors) already defined in the preprocessing chunk.
+# The "with GDP" variant adds pib_growth as a 15th predictor.
+# ----------------------------------------------------------
+
+vars_exo_pib <- c(vars_exo, "pib_growth")
+
+
+# ----------------------------------------------------------
+# STEP 5 — PREPARE THE FOUR QUARTERLY DATASETS
+# preparer_niveaux_vs() is reused unchanged from Section 4.9 —
+# it only requires a "date" column to sort on and a
+# vars_exo_vec argument, both satisfied here.
+# ----------------------------------------------------------
+
+df_arabica_trim_nogdp <- preparer_niveaux_vs(
+  dataset_trimestriel_nogdp, "prix_arabica", vars_exo)
+
+df_robusta_trim_nogdp <- preparer_niveaux_vs(
+  dataset_trimestriel_nogdp %>% filter(!is.na(prix_robusta)),
+  "prix_robusta", vars_exo)
+
+df_arabica_trim_gdp <- preparer_niveaux_vs(
+  dataset_trimestriel_gdp, "prix_arabica", vars_exo_pib)
+
+df_robusta_trim_gdp <- preparer_niveaux_vs(
+  dataset_trimestriel_gdp %>% filter(!is.na(prix_robusta)),
+  "prix_robusta", vars_exo_pib)
+
+
+# ----------------------------------------------------------
+# STEP 6 — 80/20 SPLIT, SAME split_ratio AS EVERY OTHER MODEL
+# ----------------------------------------------------------
+
+n_train_ara_trim_nogdp <- floor(nrow(df_arabica_trim_nogdp) * split_ratio)
+n_train_rob_trim_nogdp <- floor(nrow(df_robusta_trim_nogdp) * split_ratio)
+n_train_ara_trim_gdp   <- floor(nrow(df_arabica_trim_gdp)   * split_ratio)
+n_train_rob_trim_gdp   <- floor(nrow(df_robusta_trim_gdp)   * split_ratio)
+
+cat("Arabica quarterly, no GDP   — Train:", n_train_ara_trim_nogdp,
+    "| Test:", nrow(df_arabica_trim_nogdp) - n_train_ara_trim_nogdp, "\n")
+cat("Robusta quarterly, no GDP   — Train:", n_train_rob_trim_nogdp,
+    "| Test:", nrow(df_robusta_trim_nogdp) - n_train_rob_trim_nogdp, "\n")
+cat("Arabica quarterly, with GDP — Train:", n_train_ara_trim_gdp,
+    "| Test:", nrow(df_arabica_trim_gdp) - n_train_ara_trim_gdp, "\n")
+cat("Robusta quarterly, with GDP — Train:", n_train_rob_trim_gdp,
+    "| Test:", nrow(df_robusta_trim_gdp) - n_train_rob_trim_gdp, "\n")
+```
+
+The resulting training and test sizes are 56 and 15 quarters for Arabica and 51 and 13 quarters for Robusta, identical across the two variants since GDP growth does not remove any additional observation. The Arabica sample is constrained by the COT report, available only from June 2006, while the Robusta sample is constrained by its own data availability from 2008 onward — the same binding constraints as in the monthly specification, simply expressed in quarters rather than months. All six models are re-estimated using the generic functions already defined in Sections 4.8 and 4.9 (`fit_arimax_generique`, `fit_mlr_generique`, `fit_rf_generique`, `fit_xgb_generique`, `fit_svm_generique`, `fit_ann_generique`), called here with the quarterly datasets and either the baseline `vars_exo` list or the extended `vars_exo_pib` list.
+
+```{r, robustness_pib_models, message=FALSE, warning=FALSE, results='hide'}
+# ----------------------------------------------------------
+# STEP 7 — RUN ALL SIX MODELS, BOTH SERIES, BOTH VARIANTS
+# Reuses the six generic functions defined in Sections 4.8
+# and 4.9 (fit_arimax_generique, fit_mlr_generique,
+# fit_rf_generique, fit_xgb_generique, fit_svm_generique,
+# fit_ann_generique) without modification.
+# ----------------------------------------------------------
+
+# --- NO GDP VARIANT ---
+
+cat("Running quarterly ARIMAX (no GDP) — Arabica...\n")
+res_arimax_ara_trim_nogdp <- fit_arimax_generique(
+  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly ARIMAX (no GDP) — Robusta...\n")
+res_arimax_rob_trim_nogdp <- fit_arimax_generique(
+  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+
+cat("Running quarterly MLR (no GDP) — Arabica...\n")
+res_mlr_ara_trim_nogdp <- fit_mlr_generique(
+  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly MLR (no GDP) — Robusta...\n")
+res_mlr_rob_trim_nogdp <- fit_mlr_generique(
+  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+
+cat("Running quarterly RF (no GDP) — Arabica...\n")
+res_rf_ara_trim_nogdp <- fit_rf_generique(
+  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly RF (no GDP) — Robusta...\n")
+res_rf_rob_trim_nogdp <- fit_rf_generique(
+  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+
+cat("Running quarterly XGBoost (no GDP) — Arabica...\n")
+res_xgb_ara_trim_nogdp <- fit_xgb_generique(
+  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly XGBoost (no GDP) — Robusta...\n")
+res_xgb_rob_trim_nogdp <- fit_xgb_generique(
+  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+
+cat("Running quarterly SVM (no GDP) — Arabica...\n")
+res_svm_ara_trim_nogdp <- fit_svm_generique(
+  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly SVM (no GDP) — Robusta...\n")
+res_svm_rob_trim_nogdp <- fit_svm_generique(
+  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+
+cat("Running quarterly ANN (no GDP) — Arabica...\n")
+res_ann_ara_trim_nogdp <- fit_ann_generique(
+  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly ANN (no GDP) — Robusta...\n")
+res_ann_rob_trim_nogdp <- fit_ann_generique(
+  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+
+
+# --- WITH GDP VARIANT ---
+
+cat("Running quarterly ARIMAX (with GDP) — Arabica...\n")
+res_arimax_ara_trim_gdp <- fit_arimax_generique(
+  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly ARIMAX (with GDP) — Robusta...\n")
+res_arimax_rob_trim_gdp <- fit_arimax_generique(
+  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+
+cat("Running quarterly MLR (with GDP) — Arabica...\n")
+res_mlr_ara_trim_gdp <- fit_mlr_generique(
+  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly MLR (with GDP) — Robusta...\n")
+res_mlr_rob_trim_gdp <- fit_mlr_generique(
+  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+
+cat("Running quarterly RF (with GDP) — Arabica...\n")
+res_rf_ara_trim_gdp <- fit_rf_generique(
+  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly RF (with GDP) — Robusta...\n")
+res_rf_rob_trim_gdp <- fit_rf_generique(
+  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+
+cat("Running quarterly XGBoost (with GDP) — Arabica...\n")
+res_xgb_ara_trim_gdp <- fit_xgb_generique(
+  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly XGBoost (with GDP) — Robusta...\n")
+res_xgb_rob_trim_gdp <- fit_xgb_generique(
+  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+
+cat("Running quarterly SVM (with GDP) — Arabica...\n")
+res_svm_ara_trim_gdp <- fit_svm_generique(
+  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly SVM (with GDP) — Robusta...\n")
+res_svm_rob_trim_gdp <- fit_svm_generique(
+  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+
+cat("Running quarterly ANN (with GDP) — Arabica...\n")
+res_ann_ara_trim_gdp <- fit_ann_generique(
+  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly ANN (with GDP) — Robusta...\n")
+res_ann_rob_trim_gdp <- fit_ann_generique(
+  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+
+
+# ----------------------------------------------------------
+# STEP 8 — STACK METRICS, ONE TABLE PER VARIANT
+# ----------------------------------------------------------
+
+metriques_trim_nogdp_all <- rbind(
+  cbind(Model = "ARIMAX", Series = "Arabica",
+        calculer_metriques(res_arimax_ara_trim_nogdp$actual, res_arimax_ara_trim_nogdp$predicted)),
+  cbind(Model = "ARIMAX", Series = "Robusta",
+        calculer_metriques(res_arimax_rob_trim_nogdp$actual, res_arimax_rob_trim_nogdp$predicted)),
+  cbind(Model = "MLR", Series = "Arabica",
+        calculer_metriques(res_mlr_ara_trim_nogdp$actual, res_mlr_ara_trim_nogdp$predicted)),
+  cbind(Model = "MLR", Series = "Robusta",
+        calculer_metriques(res_mlr_rob_trim_nogdp$actual, res_mlr_rob_trim_nogdp$predicted)),
+  cbind(Model = "Random Forest", Series = "Arabica",
+        calculer_metriques(res_rf_ara_trim_nogdp$actual, res_rf_ara_trim_nogdp$predicted)),
+  cbind(Model = "Random Forest", Series = "Robusta",
+        calculer_metriques(res_rf_rob_trim_nogdp$actual, res_rf_rob_trim_nogdp$predicted)),
+  cbind(Model = "XGBoost", Series = "Arabica",
+        calculer_metriques(res_xgb_ara_trim_nogdp$actual, res_xgb_ara_trim_nogdp$predicted)),
+  cbind(Model = "XGBoost", Series = "Robusta",
+        calculer_metriques(res_xgb_rob_trim_nogdp$actual, res_xgb_rob_trim_nogdp$predicted)),
+  cbind(Model = "SVM", Series = "Arabica",
+        calculer_metriques(res_svm_ara_trim_nogdp$actual, res_svm_ara_trim_nogdp$predicted)),
+  cbind(Model = "SVM", Series = "Robusta",
+        calculer_metriques(res_svm_rob_trim_nogdp$actual, res_svm_rob_trim_nogdp$predicted)),
+  cbind(Model = "ANN", Series = "Arabica",
+        calculer_metriques(res_ann_ara_trim_nogdp$actual, res_ann_ara_trim_nogdp$predicted)),
+  cbind(Model = "ANN", Series = "Robusta",
+        calculer_metriques(res_ann_rob_trim_nogdp$actual, res_ann_rob_trim_nogdp$predicted))
+) %>%
+  mutate(across(c(R2, MSE, MAE), as.numeric))
+
+metriques_trim_gdp_all <- rbind(
+  cbind(Model = "ARIMAX", Series = "Arabica",
+        calculer_metriques(res_arimax_ara_trim_gdp$actual, res_arimax_ara_trim_gdp$predicted)),
+  cbind(Model = "ARIMAX", Series = "Robusta",
+        calculer_metriques(res_arimax_rob_trim_gdp$actual, res_arimax_rob_trim_gdp$predicted)),
+  cbind(Model = "MLR", Series = "Arabica",
+        calculer_metriques(res_mlr_ara_trim_gdp$actual, res_mlr_ara_trim_gdp$predicted)),
+  cbind(Model = "MLR", Series = "Robusta",
+        calculer_metriques(res_mlr_rob_trim_gdp$actual, res_mlr_rob_trim_gdp$predicted)),
+  cbind(Model = "Random Forest", Series = "Arabica",
+        calculer_metriques(res_rf_ara_trim_gdp$actual, res_rf_ara_trim_gdp$predicted)),
+  cbind(Model = "Random Forest", Series = "Robusta",
+        calculer_metriques(res_rf_rob_trim_gdp$actual, res_rf_rob_trim_gdp$predicted)),
+  cbind(Model = "XGBoost", Series = "Arabica",
+        calculer_metriques(res_xgb_ara_trim_gdp$actual, res_xgb_ara_trim_gdp$predicted)),
+  cbind(Model = "XGBoost", Series = "Robusta",
+        calculer_metriques(res_xgb_rob_trim_gdp$actual, res_xgb_rob_trim_gdp$predicted)),
+  cbind(Model = "SVM", Series = "Arabica",
+        calculer_metriques(res_svm_ara_trim_gdp$actual, res_svm_ara_trim_gdp$predicted)),
+  cbind(Model = "SVM", Series = "Robusta",
+        calculer_metriques(res_svm_rob_trim_gdp$actual, res_svm_rob_trim_gdp$predicted)),
+  cbind(Model = "ANN", Series = "Arabica",
+        calculer_metriques(res_ann_ara_trim_gdp$actual, res_ann_ara_trim_gdp$predicted)),
+  cbind(Model = "ANN", Series = "Robusta",
+        calculer_metriques(res_ann_rob_trim_gdp$actual, res_ann_rob_trim_gdp$predicted))
+) %>%
+  mutate(across(c(R2, MSE, MAE), as.numeric))
+```
+
+```{r robustness_pib_table, message=FALSE, warning=FALSE}
+# ----------------------------------------------------------
+# STEP 9 — COMPARISON TABLE: MONTHLY VS QUARTERLY (NO GDP / GDP)
+# Baseline R² is pulled directly from metriques_all (Section
+# 4.7), never hard-coded, so the table always reflects the
+# value actually produced by the most recent run.
+# ----------------------------------------------------------
+
+df_robustness_pib <- metriques_all %>%
+  select(Model, Series, R2) %>%
+  mutate(R2 = as.numeric(R2)) %>%
+  rename(R2_mensuel = R2) %>%
+  left_join(
+    metriques_trim_nogdp_all %>%
+      select(Model, Series, R2) %>%
+      rename(R2_trim_nogdp = R2),
+    by = c("Model", "Series")
+  ) %>%
+  left_join(
+    metriques_trim_gdp_all %>%
+      select(Model, Series, R2) %>%
+      rename(R2_trim_gdp = R2),
+    by = c("Model", "Series")
+  ) %>%
+  mutate(
+    Delta_GDP     = round(R2_trim_gdp - R2_trim_nogdp, 4),
+    R2_mensuel    = round(R2_mensuel, 4),
+    R2_trim_nogdp = round(R2_trim_nogdp, 4),
+    R2_trim_gdp   = round(R2_trim_gdp, 4)
+  )
+
+kable(df_robustness_pib %>% filter(Series == "Arabica") %>% select(-Series),
+      caption  = paste0("Monthly baseline vs quarterly specifications, ",
+                        "without and with GDP growth — Arabica (out-of-sample R²)"),
+      booktabs = TRUE,
+      col.names = c("Model", "R² (monthly)", "R² (quarterly, no GDP)",
+                    "R² (quarterly, with GDP)", "ΔR² (GDP effect)")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = FALSE) %>%
+  column_spec(5, color = ifelse(
+    df_robustness_pib %>% filter(Series == "Arabica") %>% pull(Delta_GDP) > 0,
+    "darkgreen", "red"))
+
+kable(df_robustness_pib %>% filter(Series == "Robusta") %>% select(-Series),
+      caption  = paste0("Monthly baseline vs quarterly specifications, ",
+                        "without and with GDP growth — Robusta (out-of-sample R²)"),
+      booktabs = TRUE,
+      col.names = c("Model", "R² (monthly)", "R² (quarterly, no GDP)",
+                    "R² (quarterly, with GDP)", "ΔR² (GDP effect)")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = FALSE) %>%
+  column_spec(5, color = ifelse(
+    df_robustness_pib %>% filter(Series == "Robusta") %>% pull(Delta_GDP) > 0,
+    "darkgreen", "red"))
+
+# Bar chart — three configurations side by side
+metriques_trim_gdp_all %>%
+  mutate(Specification = "Quarterly, with GDP") %>%
+  bind_rows(
+    metriques_trim_nogdp_all %>%
+      mutate(Specification = "Quarterly, no GDP")
+  ) %>%
+  bind_rows(
+    metriques_all %>%
+      mutate(across(c(R2, MSE, MAE), as.numeric),
+             Specification = "Monthly baseline")
+  ) %>%
+  mutate(Specification = factor(Specification,
+                                levels = c("Monthly baseline",
+                                          "Quarterly, no GDP",
+                                          "Quarterly, with GDP"))) %>%
+  ggplot(aes(x = Model, y = R2, fill = Specification)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+  scale_fill_manual(values = c("Monthly baseline"     = "#95A5A6",
+                               "Quarterly, no GDP"    = "#5B8FB9",
+                               "Quarterly, with GDP"  = "#2E5090")) +
+  facet_wrap(~ Series, ncol = 2) +
+  labs(title = "Monthly baseline vs quarterly specifications — out-of-sample R²",
+       x = NULL, y = expression(R^2), fill = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+The comparison across the three configurations isolates two distinct effects: moving from monthly to quarterly frequency, and adding GDP growth as a predictor once frequency is held fixed. The frequency effect dominates. For Arabica, the two econometric benchmarks tolerate the change reasonably well, with ARIMAX falling only marginally from 0.8209 to 0.8149 and MLR even improving slightly to 0.8201, while the four machine learning models deteriorate substantially, most severely ANN, which collapses from 0.4529 to -0.9511. For Robusta, the deterioration is broader and affects every model: ARIMAX, the strongest performer in the monthly baseline at 0.9291, drops to 0.5519 at quarterly frequency, and MLR turns negative at -0.0544. The most plausible explanation is sample size. The quarterly training window covers only 56 observations for Arabica and 51 for Robusta, against 168 and 153 at monthly frequency, a reduction that disproportionately penalises the more data-hungry machine learning models, in particular ANN and SVM.
+
+Once frequency is held fixed, the addition of GDP growth produces no consistent improvement. For Arabica, all six models deteriorate further, in two cases substantially: SVM loses 0.1231 of R² and ANN, already negative, falls another 0.7998 to -1.7509. For Robusta, the picture is mixed but the gains are small relative to the losses. ARIMAX, MLR and XGBoost improve marginally, by between 0.003 and 0.008 points, Random Forest deteriorates marginally, and SVM loses more than a fifth of its R² at -0.2237. The one substantial gain, ANN at +0.2013, starts from a negative baseline and still leaves the model only modestly above zero. Taken together, these results provide no support for including GDP growth as a predictor. Its marginal contribution is small, inconsistently signed across models and series, and dwarfed by the cost of moving to quarterly frequency in the first place.
+
+This negative result is consistent with the variable's underlying economic content. Once CPI, the Federal Funds Rate, world consumption and the dollar index are already included as predictors, OECD GDP growth, a slow-moving and backward-looking aggregate of high-income country output, carries little additional demand-side information at the frequency relevant for coffee futures pricing. The result should also be read against the constraint that motivated this robustness check in the first place. GDP growth has no monthly equivalent, so testing its contribution necessarily means testing it jointly with a frequency change that, on its own, already degrades out-of-sample performance for most models. A genuinely monthly test of the variable's marginal contribution is therefore not feasible with the data available.
 
 # Discussion
 
