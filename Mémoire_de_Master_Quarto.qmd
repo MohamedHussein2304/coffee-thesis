@@ -22,7 +22,7 @@ lang: en
 
 ## Setup
 
-This chunk initialises the working environment for the entire pipeline. All raw input data file paths and global constants are defined here and referenced in every subsequent chunk. Output files produced later in the pipeline, including the climate indices and the final assembled datasets, are written to the shared PATH_OUTPUT directory defined here, although their individual filenames are set locally in the chunk that creates each file rather than centralised here. Constructing all paths relative to BASE_PATH means that relocating the data folder requires editing a single line.
+*This chunk initialises the working environment for the entire pipeline. All raw input data file paths and global constants are defined here and referenced in every subsequent chunk. Output files produced later in the pipeline, including the climate indices and the final assembled datasets, are written to the shared PATH_OUTPUT directory defined here, although their individual filenames are set locally in the chunk that creates each file rather than centralised here. Constructing all paths relative to BASE_PATH means that relocating the data folder requires editing a single line.*
 
 ```{r setup, message=FALSE, warning=FALSE}
 packages_requis <- c(
@@ -158,13 +158,30 @@ FICHIERS_COT <- c(
 DATE_DEBUT     <- "2000-01"   # Start of the main analysis period
 DATE_FIN       <- "2023-12"   # End of the main analysis period
 DATE_DEBUT_COT <- "2006-06"   # First available COT observation (June 2006)
+
+# ----------------------------------------------------------
+# COUNTRY NAME MAPPING — INTERNAL IDENTIFIERS TO ENGLISH
+# Maps the internal identifiers used in FICHIERS_PRECIP and
+# FICHIERS_TEMP to their official English country names.
+# Used in the variety weight chunks to label display tables
+# without hardcoding names in a fixed order.
+# ----------------------------------------------------------
+
+nom_mapping <- setNames(
+  c("Brazil", "Vietnam", "Colombia", "Indonesia", "Ethiopia",
+    "India", "Honduras", "Mexico", "Uganda", "Guatemala",
+    "Peru", "Côte d'Ivoire", "Nicaragua", "Costa Rica"),
+  c("bresil", "vietnam", "colombie", "indonesie", "ethiopie",
+    "inde", "honduras", "mexique", "uganda", "guatemala",
+    "perou", "cote_ivoire", "nicaragua", "costa_rica")
+)
 ```
 
 ## Overview of the Dataset
 
 This study draws on eight distinct data sources covering the period from January 2000 to December 2023, yielding 288 monthly observations for the main analysis. The choice of this starting point rests on three considerations. First, the International Coffee Organization suspended its export quota system in 1989, and its definitive abandonment over the following years produced a decade of institutional transition that reshaped the price formation environment prevailing over the analysis period (Lewin et al., 2004). Coffee price data from before 2000 therefore reflect a structurally different market environment, and including them would introduce regime-change breaks that complicate time series modelling. Second, the ERA5 reanalysis dataset used for the climate variables reaches its highest spatial and temporal reliability from 2000 onward, corresponding to the transition to the modern satellite era (Hersbach et al., 2020). Third, two variables used throughout the analysis remain only partially available within this window: the CFTC Disaggregated COT report starts in June 2006, and Robusta futures prices from Refinitiv start in January 2008. The analysis ends in December 2023, the last month for which all data sources were simultaneously available at the time of data collection.
 
-This chunk produces the variable summary table presented in the text. Each row corresponds to one variable retained in the final dataset, grouped by category. The table is built manually as a data frame so that the ordering and grouping of rows can be controlled precisely, then rendered using `kableExtra` with row-merging on the Category column for readability.
+*This chunk produces the variable summary table presented in the text. Each row corresponds to one variable retained in the final dataset, grouped by category. The table is built manually as a data frame so that the ordering and grouping of rows can be controlled precisely, then rendered using `kableExtra` with row-merging on the Category column for readability.*
 
 ```{r table_variables}
 
@@ -252,7 +269,7 @@ The two dependent variables are the monthly average closing prices of Arabica co
 
 The use of Refinitiv as the primary source for futures price data ensures institutional-grade data quality, with prices reflecting actual transaction records from the ICE exchanges rather than aggregated or estimated values from secondary sources.
 
-This chunk reads the four Refinitiv price series, Arabica, Robusta, Cocoa and Sugar, from their raw Excel files and aggregates them from daily to monthly frequency. A single reusable function handles the parsing logic for all four files, which share the same Refinitiv export format. The chunk then builds the time series plots for the two dependent variables.
+*This chunk reads the four Refinitiv price series, Arabica, Robusta, Cocoa and Sugar, from their raw Excel files and aggregates them from daily to monthly frequency. A single reusable function handles the parsing logic for all four files, which share the same Refinitiv export format. The chunk then builds the time series plots for the two dependent variables.*
 
 ```{r prix_arabica_robusta, message = FALSE}
 
@@ -376,7 +393,7 @@ Four macroeconomic variables are included to capture the broader financial and m
 
 The WTI crude oil price captures the energy cost dimension of coffee production and transportation, as well as the broad commodity price cycle that tends to co-move across raw materials. The US Dollar Index (DXY), sourced from Investing.com, measures the value of the US dollar against a basket of major currencies; since coffee futures are denominated in US dollars, a stronger dollar tends to depress prices for non-dollar buyers, reducing global demand. The Federal Funds Rate proxies the monetary policy stance of the Federal Reserve, which influences global capital flows, risk appetite and commodity price dynamics. The Consumer Price Index (CPI) captures the general US inflation environment, controlling for the broad upward drift in nominal commodity prices that accompanies overall price-level changes, independent of coffee-specific supply and demand conditions.
 
-This chunk reads the four macroeconomic variables from their respective source files and produces a four-panel time series plot. Three series, CPI, WTI and the Federal Funds Rate, are downloaded from FRED and share an identical CSV structure, handled by a single reusable function. The Dollar Index (DXY) requires separate parsing because its Investing.com export uses a different date format and embeds numeric commas in price values.
+*This chunk reads the four macroeconomic variables from their respective source files and produces a four-panel time series plot. Three series, CPI, WTI and the Federal Funds Rate, are downloaded from FRED and share an identical CSV structure, handled by a single reusable function. The Dollar Index (DXY) requires separate parsing because its Investing.com export uses a different date format and embeds numeric commas in price values.*
 
 ```{r macro}
 
@@ -507,7 +524,7 @@ The four macroeconomic series exhibit markedly different dynamics over the analy
 
 Supply-and-demand fundamentals are sourced from the USDA Foreign Agricultural Service Production, Supply and Distribution (PSD) Online database, which publishes annual crop-year estimates for the United States and key producing and consuming countries across all major agricultural commodities. Four variables are retained: world coffee production, world domestic consumption, world exports and world ending stocks. These are aggregated to world totals by summing across all countries for each crop year.
 
-This chunk reads the USDA FAS PSD export file, aggregates country-level data to world totals for the four supply-and-demand variables, and expands the resulting annual series to monthly frequency by repeating each crop-year value across the twelve months of that year. The raw file uses an unusual structure, a single-column CSV embedded inside an Excel file, which requires a two-step parsing approach before standard tidyverse operations can be applied.
+*This chunk reads the USDA FAS PSD export file, aggregates country-level data to world totals for the four supply-and-demand variables, and expands the resulting annual series to monthly frequency by repeating each crop-year value across the twelve months of that year. The raw file uses an unusual structure, a single-column CSV embedded inside an Excel file, which requires a two-step parsing approach before standard tidyverse operations can be applied.*
 
 ```{r usda, message=FALSE, warning=FALSE}
 
@@ -645,11 +662,11 @@ This expansion procedure assumes that market participants incorporate annual sup
 
 ### Selection of Producer Countries
 
-Climate conditions in coffee-producing regions directly affect supply through their impact on cherry development, flowering and yield. Temperature and precipitation are the two primary climatic determinants of coffee production at the agronomy level. Rather than using a single country or global average, this study constructs weighted climate indices that aggregate conditions across the 14 countries that account for the largest share of world coffee production.
+Climate conditions in coffee-producing regions directly affect supply through their impact on cherry development, flowering and yield. Temperature and precipitation are the two primary climatic determinants of coffee production at the agronomic level. Rather than using a single country or global average, this study constructs weighted climate indices that aggregate conditions across the 14 countries that account for the largest share of world coffee production.
 
 The selection of these 14 countries follows a systematic, data-driven criterion: only countries whose average annual share of world coffee production exceeds 1% over the 2000–2024 period are included. This threshold is computed directly from the USDA FAS PSD data used for the supply fundamentals variables, ensuring full consistency between the production weights and the underlying data source. The table below reports the calculated production shares and confirms the selection criterion.
 
-This chunk derives the country selection criterion for the climate indices directly from the USDA PSD data already loaded in the previous chunk. For each crop year, each country's share of world production is computed, and the 25-year average of that share is then calculated across the full 2000–2024 period. Only countries whose average share meets or exceeds the 1% threshold are retained. Using the same USDA source as the fundamentals variables ensures full consistency between the production weights and the underlying data.
+*This chunk derives the country selection criterion for the climate indices directly from the USDA PSD data already loaded in the previous chunk. For each crop year, each country's share of world production is computed, and the 25-year average of that share is then calculated across the full 2000–2024 period. Only countries whose average share meets or exceeds the 1% threshold are retained.*
 
 ```{r selection_pays, echo=TRUE}
 
@@ -709,9 +726,9 @@ kable(prod_by_country,
                 font_size = 11, full_width = FALSE)
 ```
 
-This chunk converts the raw production shares computed in the previous chunk into normalised weights that sum exactly to one. These weights are the core of the climate index construction: every weighted average in the subsequent climate chunks is computed using `POIDS_PRODUCTION`. Two parallel vectors map official country names as they appear in the USDA PSD database to the internal identifiers used in the file lists defined in the setup chunk, ensuring that the correct weight is always matched to the correct file.
+*This chunk converts the raw production shares computed in the previous chunk into normalised weights that sum exactly to one. These weights are the core of the climate index construction: every weighted average in the subsequent climate chunks is computed using `POIDS_PRODUCTION`. Two parallel vectors map official country names as they appear in the USDA PSD database to the internal identifiers used in the file lists defined in the setup chunk, ensuring that the correct weight is always matched to the correct file.*
 
-```{r poids_production}
+```{r poids_production, include=FALSE}
 
 # ----------------------------------------------------------
 # STEP 1 — DEFINE THE NAME MAPPING BETWEEN USDA AND FILES
@@ -770,7 +787,7 @@ POIDS_PRODUCTION <- PARTS_PRODUCTION / sum(PARTS_PRODUCTION)
 cat("Names of POIDS_PRODUCTION:", names(POIDS_PRODUCTION), "\n")
 ```
 
-The 14 selected countries collectively account for `r round(sum(prod_by_country$avg_share), 1)`% of world coffee production on average over 2000–2024. Countries falling below the 1% threshold have a negligible and individually undifferentiated impact on global supply, and their inclusion would add noise without improving the explanatory power of the climate indices.
+The 14 selected countries collectively account for `r round(sum(prod_by_country$avg_share), 1)`% of world coffee production on average over 2000–2024. Countries falling below the 1% threshold have a negligible impact on global supply, and their inclusion would add noise without improving the explanatory power of the climate indices.
 
 Before constructing variety-specific production weights, the share of Arabica and Robusta production is computed for each of the 14 retained countries directly from the USDA FAS PSD data. The `Arabica Production` and `Robusta Production` attributes are available as separate line items in the raw dataset, allowing the variety split to be calculated empirically rather than assumed from external sources. This ensures full consistency with the data already used for the global production weights. The table below reports the calculated variety shares for each of the 14 countries over the 2000–2024 period.
 
@@ -824,19 +841,19 @@ kable(splits_variete %>% select(Country_Name, arabica_disp, pct_monde_arabica,
                                  robusta_disp, pct_monde_robusta),
       caption   = "Variety splits — Arabica vs Robusta production share per country (2000–2024, USDA FAS PSD)",
       booktabs  = TRUE,
-      col.names = c("Country", "Arabica (1000 bags, % of country)",
-                    "% of 14-country Arabica total",
-                    "Robusta (1000 bags, % of country)",
-                    "% of 14-country Robusta total")) %>%
+      col.names = c("Country", "Volume (% of country)", "% of group total",
+                    "Volume (% of country)", "% of group total"),
+      align     = c("l", "r", "r", "r", "r")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = TRUE)
+                font_size = 11, full_width = FALSE) %>%
+  add_header_above(c(" " = 1, "Arabica" = 2, "Robusta" = 2))
 ```
 
-The variety split table confirms the expected production geography of the two coffee varieties. Nine countries produce exclusively or quasi-exclusively Arabica — Colombia, Ethiopia, Honduras, Peru, Costa Rica, Guatemala, Nicaragua and Mexico all report Arabica shares above 90%, and are therefore assigned entirely to the Arabica group. Brazil, the world's largest producer, is the only major country with a significant mixed production, reporting 72.3% Arabica and 27.7% Robusta over the 2000–2024 period. On the Robusta side, Vietnam and Côte d'Ivoire are quasi-pure Robusta producers at 96.8% and 100% respectively, while Indonesia (87.7%), Uganda (80.9%) and India (67.8%) produce predominantly but not exclusively Robusta.
+The variety split table confirms the expected production geography of the two coffee varieties. Eight countries produce exclusively or quasi-exclusively Arabica — Colombia, Ethiopia, Honduras, Peru, Costa Rica, Guatemala, Nicaragua and Mexico all report Arabica shares above 90%, and are therefore assigned entirely to the Arabica group. Brazil, the world's largest producer, is the only major country with a significant mixed production, reporting 72.3% Arabica and 27.7% Robusta over the 2000–2024 period. On the Robusta side, Vietnam and Côte d'Ivoire are quasi-pure Robusta producers at 96.8% and 100% respectively, while Indonesia (87.7%), Uganda (80.9%) and India (67.8%) produce predominantly but not exclusively Robusta.
 
-Four countries contribute to both variety-specific indices: Brazil, India, Uganda and Indonesia. For these countries, the production weight assigned to each group is scaled by the empirically computed variety share rather than assumed from external sources. Countries with a variety share above 90% are treated as pure producers and assigned entirely to their dominant group — a simplification justified by the negligible contribution of the minority variety to their total output. This variety-aware weighting scheme ensures that the climate indices used in each model specification reflect conditions in the actual producing zones for that variety, rather than averaging over climatically relevant and irrelevant regions indiscriminately.
+Four countries contribute to both variety-specific indices: Brazil, India, Uganda and Indonesia. For these countries, the production weight assigned to each group is scaled by the empirically computed variety share rather than assumed from external sources. Countries with a variety share above 90% are treated as pure producers and assigned entirely to their dominant group, a simplification justified by the negligible contribution of the minority variety to their total output. This variety-aware weighting scheme ensures that the climate indices used in each model specification reflect conditions in the actual producing zones for that variety, rather than averaging over climatically relevant and irrelevant regions.
 
-The variety-specific production weights are now constructed for each group. For the Arabica group, the nine producing countries are assigned weights proportional to their Arabica production share, adjusted by the empirically computed variety splits for mixed producers. The resulting weights sum to one and reflect the long-run structural contribution of each country to global Arabica supply over 2000–2024.
+*The variety-specific production weights are now constructed for each group. For the Arabica group, the twelve contributing countries are assigned weights proportional to their Arabica production share, adjusted by the empirically computed variety splits for mixed producers. The resulting weights sum to one and reflect the long-run structural contribution of each country to global Arabica supply over 2000–2024.*
 
 ```{r poids_arabica}
 
@@ -861,11 +878,13 @@ split_arabica <- c(
   guatemala   = 1.000,
   perou       = 1.000,
   nicaragua   = 1.000,
-  costa_rica  = 1.000
+  costa_rica  = 1.000,
+  uganda      = 0.191,
+  indonesie   = 0.123
 )
 
 # Extract raw production shares for Arabica countries
-# Uganda, Vietnam, Indonesia, Cote d'Ivoire are excluded
+# Vietnam and Cote d'Ivoire are excluded
 # as they are assigned to the Robusta group
 noms_arabica <- names(split_arabica)
 
@@ -883,10 +902,12 @@ POIDS_ARABICA <- PARTS_ARABICA_ADJ / sum(PARTS_ARABICA_ADJ,
 
 # Display verification table
 df_poids_arabica <- data.frame(
-  Country     = names(POIDS_ARABICA),
-  Raw_share   = round(PARTS_ARABICA_RAW[names(POIDS_ARABICA)], 4),
-  Split       = round(split_arabica[names(POIDS_ARABICA)], 3),
-  Adj_share   = round(PARTS_ARABICA_ADJ[names(POIDS_ARABICA)], 4),
+  Country      = c("Brazil", "Colombia", "Indonesia", "Ethiopia", "India",
+                   "Honduras", "Mexico", "Uganda", "Guatemala", "Peru",
+                   "Nicaragua", "Costa Rica"),
+  Raw_share    = round(PARTS_ARABICA_RAW[names(POIDS_ARABICA)], 4),
+  Split        = round(split_arabica[names(POIDS_ARABICA)], 3),
+  Adj_share    = round(PARTS_ARABICA_ADJ[names(POIDS_ARABICA)], 4),
   Final_weight = round(POIDS_ARABICA, 4)
 )
 
@@ -894,13 +915,13 @@ kable(df_poids_arabica,
       caption   = "Arabica production weights — variety-adjusted (2000–2024)",
       booktabs  = TRUE,
       row.names = FALSE,
-      col.names = c("Country", "Raw share", "Arabica split",
-                    "Adjusted share", "Final weight")) %>%
+      col.names = c("Country", "Raw share (%)", "Arabica split",
+                    "Adjusted share (%)", "Final weight")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = FALSE)
 ```
 
-The same procedure is applied to the Robusta group. Five countries are assigned to this group — Vietnam, Indonesia, Uganda, Côte d'Ivoire and India — with variety splits applied to the four mixed producers. Vietnam and Côte d'Ivoire are treated as pure Robusta producers given their shares of 96.8% and 100% respectively.
+*The same procedure is applied to the Robusta group. Six countries are assigned to this group, namely Vietnam, Indonesia, Uganda, Côte d'Ivoire, India and Brazil, with variety splits applied to the four mixed producers. Vietnam and Côte d'Ivoire are treated as pure Robusta producers given their shares of 96.8% and 100% respectively.*
 
 ```{r poids_robusta}
 
@@ -940,7 +961,7 @@ POIDS_ROBUSTA <- PARTS_ROBUSTA_ADJ / sum(PARTS_ROBUSTA_ADJ,
 
 # Display verification table
 df_poids_robusta <- data.frame(
-  Country      = names(POIDS_ROBUSTA),
+  Country      = nom_mapping[names(POIDS_ROBUSTA)],
   Raw_share    = round(PARTS_ROBUSTA_RAW[names(POIDS_ROBUSTA)], 4),
   Split        = round(split_robusta[names(POIDS_ROBUSTA)], 3),
   Adj_share    = round(PARTS_ROBUSTA_ADJ[names(POIDS_ROBUSTA)], 4),
@@ -951,8 +972,8 @@ kable(df_poids_robusta,
       caption   = "Robusta production weights — variety-adjusted (2000–2024)",
       booktabs  = TRUE,
       row.names = FALSE,
-      col.names = c("Country", "Raw share", "Robusta split",
-                    "Adjusted share", "Final weight")) %>%
+      col.names = c("Country", "Raw share (%)", "Robusta split",
+                    "Adjusted share (%)", "Final weight")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = FALSE)
 ```
@@ -961,7 +982,7 @@ kable(df_poids_robusta,
 
 Temperature and precipitation data are sourced from the World Bank Climate Knowledge Portal (CCKP), which provides access to the ERA5 reanalysis dataset produced by the European Centre for Medium-Range Weather Forecasts (ECMWF). ERA5 offers a spatial resolution of 0.25 degrees (approximately 28 km × 28 km at the equator), which is among the finest resolutions available for global gridded climate datasets covering the full 2000–2023 period.
 
-Data are extracted at the Administrative Division Level 1 (ADM1) — that is, at the province or state level within each country. This sub-national resolution is preferred over country-level averages because coffee cultivation is highly concentrated within specific regions of each country. In Brazil, for instance, production is concentrated in Minas Gerais, São Paulo and Espírito Santo, while the Amazon basin produces virtually none. Using ADM1-level data allows the weighted climate indices to better reflect conditions in the actual producing zones, rather than averaging over climatically diverse national territories.
+Data are extracted at the Administrative Division Level 1 (ADM1), that is, at the province or state level within each country. For each country, a national monthly average is computed by taking the simple arithmetic mean across all ADM1 regions, yielding a single national climate series per country and per month.
 
 ### Construction of the Weighted Climate Indices
 
@@ -971,11 +992,13 @@ $$\text{Index}(t) = \sum_{i=1}^{14} w_i \cdot X_i(t)$$
 
 where $X_i(t)$ is the national average value of the climate variable (precipitation in mm or temperature in °C) for country $i$ in month $t$, and $w_i$ is the normalised production weight of country $i$ (with $\sum w_i = 1$).
 
-The production weights are held constant at their 2000–2024 averages rather than varying year by year. This fixed-weight approach is adopted to avoid a simultaneity problem: if a climate shock in year $t$ reduces production in a given country, its production share — and therefore its weight in the climate index — would be lower precisely in the year when the shock is most severe. Using time-varying weights would thus attenuate the very signal the index is designed to capture. Fixed weights computed over a long historical average naturally smooth out year-to-year fluctuations in production shares, avoiding the simultaneity bias that would arise from time-varying weights.
+The production weights are held constant at their 2000–2024 averages rather than varying year by year. This fixed-weight approach is adopted to avoid a simultaneity problem: if a climate shock in year $t$ reduces production in a given country, its production share, and therefore its weight in the climate index, would be lower precisely in the year when the shock is most severe. Using time-varying weights would thus attenuate the very signal the index is designed to capture.
 
-This chunk reads the ERA5 precipitation files for all 14 producer countries, computes a national monthly average across ADM1 regions within each country, and then aggregates the 14 national series into a single production-weighted global precipitation index. The reading logic is encapsulated in a reusable function that is applied to all 14 files simultaneously via `mapply()`. The resulting index is saved to disk for reuse in the final dataset assembly chunk.
+*This chunk reads the ERA5 precipitation files for all 14 producer countries, computes a national monthly average across ADM1 regions within each country, and then aggregates the 14 national series into a single production-weighted global precipitation index. The reading logic is encapsulated in a reusable function that is applied to all 14 files simultaneously via `mapply()`. The resulting index is saved to disk for reuse in the final dataset assembly chunk.*
 
 ```{r precipitations, message=FALSE}
+
+cat("Running precipitation chunk — this may take a few minutes...\n")
 
 # ----------------------------------------------------------
 # READING FUNCTION — ERA5 ADM1 CLIMATE FILES
@@ -1095,9 +1118,11 @@ write.csv(df_precip_all %>% select(date, starts_with("precip_")),
           row.names = FALSE)
 ```
 
-This chunk applies the exact same pipeline as the precipitation chunk to the temperature data. The `lire_climat_pays()` function defined previously is reused without modification — only the input file list, the variable prefix and the output filename change. The resulting production-weighted temperature index is saved to disk alongside the precipitation index.
+*This chunk applies the exact same pipeline as the precipitation chunk to the temperature data. The `lire_climat_pays()` function defined previously is reused without modification, only the input file list, the variable prefix and the output filename change. The resulting production-weighted temperature index is saved to disk alongside the precipitation index.*
 
 ```{r temperatures, message=FALSE}
+
+cat("Running temperature chunk — this may take a few minutes...\n")
 
 # ----------------------------------------------------------
 # STEP 1 — READ ALL 14 COUNTRY TEMPERATURE FILES
@@ -1165,579 +1190,13 @@ write.csv(df_temp_all %>% select(date, starts_with("temp_")),
           file.path(PATH_OUTPUT, "temp_disaggregated_2000_2023.csv"),
           row.names = FALSE)
 ```
-
-The production-weighted climate indices constructed in the preceding sections aggregate temperature and precipitation conditions across all 14 producer countries regardless of the coffee variety they produce. As established in the variety split analysis, however, the production geographies of Arabica and Robusta are structurally distinct — Arabica is concentrated in Brazil, Colombia and Central America, while Robusta is dominated by Vietnam, Indonesia, Uganda and Côte d'Ivoire. Aggregating climate conditions across both groups in a single index dilutes the variety-specific signal: conditions in Vietnam are irrelevant to Arabica price formation, and conditions in Colombia are irrelevant to Robusta. Two variety-specific climate indices are therefore constructed using the variety-adjusted production weights derived above, one for each coffee group. The pipeline is identical to that used for the global indices — national ADM1 averages are computed and aggregated using the dot product of national values and variety-specific weights — with the difference that only the countries and weights relevant to each variety are included.
-
-```{r indices_climatiques_arabica, message=FALSE}
-
-# ----------------------------------------------------------
-# VARIETY-SPECIFIC CLIMATE INDICES — ARABICA GROUP
-# The same lire_climat_pays() function is reused without
-# modification. Only the file lists and weight vectors change.
-# Arabica group: Brazil, Colombia, Ethiopia, India, Honduras,
-# Mexico, Guatemala, Peru, Nicaragua, Costa Rica.
-# Mixed producers (Brazil, India) contribute their Arabica
-# share only via POIDS_ARABICA.
-# ----------------------------------------------------------
-
-# STEP 1 — READ PRECIPITATION FILES FOR ARABICA COUNTRIES
-FICHIERS_PRECIP_ARA <- FICHIERS_PRECIP[names(POIDS_ARABICA)]
-
-liste_precip_ara <- mapply(FUN      = lire_climat_pays,
-                           fichier  = FICHIERS_PRECIP_ARA,
-                           nom_pays = names(FICHIERS_PRECIP_ARA),
-                           variable = "precip",
-                           SIMPLIFY = FALSE)
-
-df_precip_ara <- Reduce(function(x, y) left_join(x, y, by = "date"),
-                        liste_precip_ara) %>%
-  filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
-  arrange(date)
-
-# STEP 2 — COMPUTE WEIGHTED PRECIPITATION INDEX — ARABICA
-cols_precip_ara <- paste0("precip_", names(POIDS_ARABICA))
-
-df_precip_ara <- df_precip_ara %>%
-  rowwise() %>%
-  mutate(indice_precip_arabica = sum(
-    c_across(all_of(cols_precip_ara)) * POIDS_ARABICA,
-    na.rm = TRUE)) %>%
-  ungroup()
-
-# STEP 3 — READ TEMPERATURE FILES FOR ARABICA COUNTRIES
-FICHIERS_TEMP_ARA <- FICHIERS_TEMP[names(POIDS_ARABICA)]
-
-liste_temp_ara <- mapply(FUN      = lire_climat_pays,
-                         fichier  = FICHIERS_TEMP_ARA,
-                         nom_pays = names(FICHIERS_TEMP_ARA),
-                         variable = "temp",
-                         SIMPLIFY = FALSE)
-
-df_temp_ara <- Reduce(function(x, y) left_join(x, y, by = "date"),
-                      liste_temp_ara) %>%
-  filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
-  arrange(date)
-
-# STEP 4 — COMPUTE WEIGHTED TEMPERATURE INDEX — ARABICA
-cols_temp_ara <- paste0("temp_", names(POIDS_ARABICA))
-
-df_temp_ara <- df_temp_ara %>%
-  rowwise() %>%
-  mutate(indice_temp_arabica = sum(
-    c_across(all_of(cols_temp_ara)) * POIDS_ARABICA,
-    na.rm = TRUE)) %>%
-  ungroup()
-
-# STEP 5 — SAVE TO DISK
-df_indice_precip_arabica <- df_precip_ara %>%
-  select(date, indice_precip_arabica)
-
-df_indice_temp_arabica <- df_temp_ara %>%
-  select(date, indice_temp_arabica)
-
-write.csv(df_indice_precip_arabica,
-          file.path(PATH_OUTPUT, "indice_precip_arabica_2000_2023.csv"),
-          row.names = FALSE)
-
-write.csv(df_indice_temp_arabica,
-          file.path(PATH_OUTPUT, "indice_temp_arabica_2000_2023.csv"),
-          row.names = FALSE)
-```
-
-```{r indices_climatiques_robusta, message=FALSE}
-
-# ----------------------------------------------------------
-# VARIETY-SPECIFIC CLIMATE INDICES — ROBUSTA GROUP
-# Identical pipeline to the Arabica chunk. Only the file
-# lists and weight vectors change.
-# Robusta group: Vietnam, Indonesia, Uganda, Cote d'Ivoire,
-# India, Brazil.
-# Mixed producers (Brazil, Indonesia, Uganda, India) contribute
-# their Robusta share only via POIDS_ROBUSTA.
-# ----------------------------------------------------------
-
-# STEP 1 — READ PRECIPITATION FILES FOR ROBUSTA COUNTRIES
-FICHIERS_PRECIP_ROB <- FICHIERS_PRECIP[names(POIDS_ROBUSTA)]
-
-liste_precip_rob <- mapply(FUN      = lire_climat_pays,
-                           fichier  = FICHIERS_PRECIP_ROB,
-                           nom_pays = names(FICHIERS_PRECIP_ROB),
-                           variable = "precip",
-                           SIMPLIFY = FALSE)
-
-df_precip_rob <- Reduce(function(x, y) left_join(x, y, by = "date"),
-                        liste_precip_rob) %>%
-  filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
-  arrange(date)
-
-# STEP 2 — COMPUTE WEIGHTED PRECIPITATION INDEX — ROBUSTA
-cols_precip_rob <- paste0("precip_", names(POIDS_ROBUSTA))
-
-df_precip_rob <- df_precip_rob %>%
-  rowwise() %>%
-  mutate(indice_precip_robusta = sum(
-    c_across(all_of(cols_precip_rob)) * POIDS_ROBUSTA,
-    na.rm = TRUE)) %>%
-  ungroup()
-
-# STEP 3 — READ TEMPERATURE FILES FOR ROBUSTA COUNTRIES
-FICHIERS_TEMP_ROB <- FICHIERS_TEMP[names(POIDS_ROBUSTA)]
-
-liste_temp_rob <- mapply(FUN      = lire_climat_pays,
-                         fichier  = FICHIERS_TEMP_ROB,
-                         nom_pays = names(FICHIERS_TEMP_ROB),
-                         variable = "temp",
-                         SIMPLIFY = FALSE)
-
-df_temp_rob <- Reduce(function(x, y) left_join(x, y, by = "date"),
-                      liste_temp_rob) %>%
-  filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
-  arrange(date)
-
-# STEP 4 — COMPUTE WEIGHTED TEMPERATURE INDEX — ROBUSTA
-cols_temp_rob <- paste0("temp_", names(POIDS_ROBUSTA))
-
-df_temp_rob <- df_temp_rob %>%
-  rowwise() %>%
-  mutate(indice_temp_robusta = sum(
-    c_across(all_of(cols_temp_rob)) * POIDS_ROBUSTA,
-    na.rm = TRUE)) %>%
-  ungroup()
-
-# STEP 5 — SAVE TO DISK
-df_indice_precip_robusta <- df_precip_rob %>%
-  select(date, indice_precip_robusta)
-
-df_indice_temp_robusta <- df_temp_rob %>%
-  select(date, indice_temp_robusta)
-
-write.csv(df_indice_precip_robusta,
-          file.path(PATH_OUTPUT, "indice_precip_robusta_2000_2023.csv"),
-          row.names = FALSE)
-
-write.csv(df_indice_temp_robusta,
-          file.path(PATH_OUTPUT, "indice_temp_robusta_2000_2023.csv"),
-          row.names = FALSE)
-```
-
-The same variety-specific logic applied to the climate indices is now extended to the supply-and-demand fundamentals. Rather than using world totals for production, consumption, exports and ending stocks, two variety-specific aggregates are constructed by summing across the countries assigned to each group, weighted by their variety split. This ensures that the fundamentals used in the Arabica models reflect conditions in Arabica-producing countries only, and vice versa for Robusta.
-
-```{r fondamentaux_arabica, message=FALSE, warning=FALSE}
-
-# ----------------------------------------------------------
-# VARIETY-SPECIFIC FUNDAMENTALS — ARABICA GROUP
-# Production, consumption, exports and ending stocks are
-# aggregated across Arabica-producing countries only.
-# Mixed producers (Brazil, India, Uganda, Indonesia) contribute
-# their Arabica share only, applied to their country-level
-# fundamentals before summing to group totals.
-# ----------------------------------------------------------
-
-# Arabica countries with their variety splits
-arabica_splits_df <- data.frame(
-  Country_Name = c("Brazil", "Colombia", "Ethiopia", "India",
-                   "Honduras", "Mexico", "Guatemala", "Peru",
-                   "Nicaragua", "Costa Rica"),
-  split = c(0.723, 1.000, 1.000, 0.322,
-            1.000, 1.000, 1.000, 1.000,
-            1.000, 1.000),
-  stringsAsFactors = FALSE
-)
-
-# Apply variety split to fundamentals and aggregate
-df_usda_arabica <- df_usda %>%
-  filter(Attribute_Description %in% c("Production",
-                                       "Domestic Consumption",
-                                       "Exports",
-                                       "Ending Stocks"),
-         Market_Year >= 2000, Market_Year <= 2024) %>%
-  # Recode Cote d'Ivoire before join
-  mutate(Country_Name = recode(Country_Name,
-                                "Cote d'Ivoire" = "Côte d'Ivoire")) %>%
-  # Keep only Arabica countries
-  inner_join(arabica_splits_df, by = "Country_Name") %>%
-  # Apply variety split to each country's value
-  mutate(Value_adj = Value * split) %>%
-  # Sum across countries for each year and attribute
-  group_by(Market_Year, Attribute_Description) %>%
-  summarise(valeur = sum(Value_adj, na.rm = TRUE), .groups = "drop") %>%
-  pivot_wider(names_from = Attribute_Description,
-              values_from = valeur) %>%
-  rename(annee                  = Market_Year,
-         production_ara         = Production,
-         consommation_ara       = `Domestic Consumption`,
-         exportations_ara       = Exports,
-         ending_stocks_ara      = `Ending Stocks`) %>%
-  arrange(annee) %>%
-  mutate(consommation_ara = ifelse(annee == 2000, NA, consommation_ara))
-
-# Expand to monthly frequency
-df_usda_arabica_monthly <- df_usda_arabica %>%
-  rowwise() %>%
-  do({
-    annee <- .$annee
-    data.frame(
-      date             = format(seq(as.Date(paste0(annee, "-01-01")),
-                                   as.Date(paste0(annee, "-12-01")),
-                                   by = "month"), "%Y-%m"),
-      production_ara   = .$production_ara,
-      consommation_ara = .$consommation_ara,
-      exportations_ara = .$exportations_ara,
-      ending_stocks_ara = .$ending_stocks_ara
-    )
-  }) %>%
-  ungroup()
-
-write.csv(df_usda_arabica_monthly,
-          file.path(PATH_OUTPUT, "fondamentaux_arabica_2000_2023.csv"),
-          row.names = FALSE)
-```
-
-```{r fondamentaux_robusta, message=FALSE, warning=FALSE}
-
-# ----------------------------------------------------------
-# VARIETY-SPECIFIC FUNDAMENTALS — ROBUSTA GROUP
-# Identical pipeline to the Arabica chunk.
-# Robusta countries: Vietnam, Indonesia, Uganda, Cote d'Ivoire,
-# India, Brazil — each with their empirical Robusta split.
-# ----------------------------------------------------------
-
-# Robusta countries with their variety splits
-robusta_splits_df <- data.frame(
-  Country_Name = c("Brazil", "Vietnam", "Indonesia", "India",
-                   "Uganda", "Cote d'Ivoire"),
-  split = c(0.277, 1.000, 0.877, 0.678,
-            0.809, 1.000),
-  stringsAsFactors = FALSE
-)
-
-# Apply variety split to fundamentals and aggregate
-df_usda_robusta <- df_usda %>%
-  filter(Attribute_Description %in% c("Production",
-                                       "Domestic Consumption",
-                                       "Exports",
-                                       "Ending Stocks"),
-         Market_Year >= 2000, Market_Year <= 2024) %>%
-  # Keep original Cote d'Ivoire spelling for join
-  inner_join(robusta_splits_df, by = "Country_Name") %>%
-  # Apply variety split to each country's value
-  mutate(Value_adj = Value * split) %>%
-  # Sum across countries for each year and attribute
-  group_by(Market_Year, Attribute_Description) %>%
-  summarise(valeur = sum(Value_adj, na.rm = TRUE), .groups = "drop") %>%
-  pivot_wider(names_from = Attribute_Description,
-              values_from = valeur) %>%
-  rename(annee                  = Market_Year,
-         production_rob         = Production,
-         consommation_rob       = `Domestic Consumption`,
-         exportations_rob       = Exports,
-         ending_stocks_rob      = `Ending Stocks`) %>%
-  arrange(annee) %>%
-  mutate(consommation_rob = ifelse(annee == 2000, NA, consommation_rob))
-
-# Expand to monthly frequency
-df_usda_robusta_monthly <- df_usda_robusta %>%
-  rowwise() %>%
-  do({
-    annee <- .$annee
-    data.frame(
-      date              = format(seq(as.Date(paste0(annee, "-01-01")),
-                                    as.Date(paste0(annee, "-12-01")),
-                                    by = "month"), "%Y-%m"),
-      production_rob    = .$production_rob,
-      consommation_rob  = .$consommation_rob,
-      exportations_rob  = .$exportations_rob,
-      ending_stocks_rob = .$ending_stocks_rob
-    )
-  }) %>%
-  ungroup()
-
-write.csv(df_usda_robusta_monthly,
-          file.path(PATH_OUTPUT, "fondamentaux_robusta_2000_2023.csv"),
-          row.names = FALSE)
-```
-
-This chunk joins the two climate indices into a single plotting frame and produces a two-panel time series chart for visual inspection. The plot serves as a first diagnostic check on the indices: it allows verifying that the seasonal patterns, trend behaviour and known climate episodes visible in the raw data are correctly reflected in the aggregated series before they enter the modelling pipeline.
-
-```{r plot_climat, fig.width=10, fig.height=5}
-
-# ----------------------------------------------------------
-# BUILD THE PLOTTING FRAME
-# The two index series are joined on date and a proper Date
-# column is added for ggplot's date scale. Both indices are
-# already filtered to 2000-2023 from the previous chunks,
-# so no further filtering is needed here.
-# ----------------------------------------------------------
-
-df_clim_plot <- df_indice_precip %>%
-  left_join(df_indice_temp, by = "date") %>%
-  mutate(date_fmt = as.Date(paste0(date, "-01")))
-
-
-# ----------------------------------------------------------
-# TWO-PANEL CLIMATE INDEX PLOT
-# Panel 1 — Precipitation index (mm/month)
-#   A strong seasonal cycle is expected and confirms that the
-#   ADM1 averaging and weighting steps preserved the seasonal
-#   signal present in the raw country-level data.
-#
-# Panel 2 — Temperature index (°C)
-#   A gradual upward trend over the period is consistent with
-#   documented warming in tropical producing regions. If
-#   confirmed by the stationarity tests below, this trend
-#   implies that the temperature series will require first-
-#   differencing before entering the econometric models.
-# ----------------------------------------------------------
-
-gridExtra::grid.arrange(
-
-  ggplot(df_clim_plot, aes(date_fmt, indice_precip)) +
-    geom_line(color = "steelblue", linewidth = 0.8) +
-    labs(title    = "Weighted precipitation index — 14 producer countries",
-         subtitle = "Simple mean across ADM1 regions, weighted by production share (ERA5, mm/month)",
-         x = NULL, y = "Precipitation (mm)") +
-    theme_minimal(base_size = 10) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y"),
-
-  ggplot(df_clim_plot, aes(date_fmt, indice_temp)) +
-    geom_line(color = "tomato", linewidth = 0.8) +
-    labs(title    = "Weighted temperature index — 14 producer countries",
-         subtitle = "Simple mean across ADM1 regions, weighted by production share (ERA5, °C)",
-         x = NULL, y = "Temperature (°C)") +
-    theme_minimal(base_size = 10) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y"),
-
-  ncol = 1
-)
-```
-
-The precipitation index displays a strong seasonal pattern throughout the 2000–2023 period, with no discernible long-term trend, consistent with expectations for a stationary series. Notable dry episodes are visible around 2005–2006 and 2013–2014, corresponding to documented drought periods in Brazil. The temperature index also exhibits seasonal fluctuations but reveals a gradual upward trend over the period, rising from approximately 23°C in 2000 to peaks above 25°C in recent years. This warming pattern is consistent with global climate change trends in tropical producing regions and suggests that the temperature series may be non-stationary in levels — a hypothesis that will be formally tested in the stationarity analysis below.
-
-### Disaggregated Climate Analysis
-
-This section disaggregates the two production-weighted climate indices to show the individual contribution of each of the 14 producer countries. Two complementary visualisations are produced: a stacked area chart showing how each country's weighted contribution evolves over time, and an anomaly heatmap identifying which countries experienced the most significant climate deviations from their long-run averages. Together these plots provide the visual basis for understanding the country-level heterogeneity that the aggregated indices summarise.
-
-```{r climate_contributions, message=FALSE, fig.width=12, fig.height=8}
-
-# ----------------------------------------------------------
-# STEP 1 — COMPUTE WEIGHTED CONTRIBUTIONS PER COUNTRY
-# For each month t and country i, the contribution to the
-# global index is w_i * X_i(t). These contributions sum to
-# the aggregated index value at each point in time.
-# The data is reshaped from wide to long format for ggplot.
-# ----------------------------------------------------------
-
-# Country display names for the legend (same order as POIDS_PRODUCTION)
-noms_affichage <- c(
-  "bresil"      = "Brazil",
-  "vietnam"     = "Vietnam",
-  "colombie"    = "Colombia",
-  "indonesie"   = "Indonesia",
-  "ethiopie"    = "Ethiopia",
-  "inde"        = "India",
-  "honduras"    = "Honduras",
-  "mexique"     = "Mexico",
-  "uganda"      = "Uganda",
-  "guatemala"   = "Guatemala",
-  "perou"       = "Peru",
-  "cote_ivoire" = "Côte d'Ivoire",
-  "nicaragua"   = "Nicaragua",
-  "costa_rica"  = "Costa Rica"
-)
-
-# --- PRECIPITATION CONTRIBUTIONS ---
-cols_precip <- paste0("precip_", names(POIDS_PRODUCTION))
-
-df_contrib_precip <- df_precip_all %>%
-  filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
-  select(date, all_of(cols_precip)) %>%
-  # Multiply each country column by its production weight
-  mutate(across(all_of(cols_precip),
-                ~ .x * POIDS_PRODUCTION[sub("precip_", "", cur_column())])) %>%
-  pivot_longer(cols = all_of(cols_precip),
-               names_to  = "pays",
-               values_to = "contribution") %>%
-  mutate(
-    pays     = sub("precip_", "", pays),
-    pays     = recode(pays, !!!noms_affichage),
-    date_fmt = as.Date(paste0(date, "-01")),
-    # Order countries by production weight (largest at bottom)
-    pays = factor(pays, levels = rev(noms_affichage[names(POIDS_PRODUCTION)]))
-  )
-
-# --- TEMPERATURE CONTRIBUTIONS ---
-cols_temp <- paste0("temp_", names(POIDS_PRODUCTION))
-
-df_contrib_temp <- df_temp_all %>%
-  filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
-  select(date, all_of(cols_temp)) %>%
-  mutate(across(all_of(cols_temp),
-                ~ .x * POIDS_PRODUCTION[sub("temp_", "", cur_column())])) %>%
-  pivot_longer(cols = all_of(cols_temp),
-               names_to  = "pays",
-               values_to = "contribution") %>%
-  mutate(
-    pays     = sub("temp_", "", pays),
-    pays     = recode(pays, !!!noms_affichage),
-    date_fmt = as.Date(paste0(date, "-01")),
-    pays = factor(pays, levels = rev(noms_affichage[names(POIDS_PRODUCTION)]))
-  )
-
-# Colour palette — 14 distinct colours
-palette_pays <- c(
-  "Brazil"        = "#8B4513", "Vietnam"      = "#2E8B57",
-  "Colombia"      = "#4169E1", "Indonesia"    = "#FF8C00",
-  "Ethiopia"      = "#9370DB", "India"        = "#20B2AA",
-  "Honduras"      = "#DC143C", "Mexico"       = "#DAA520",
-  "Uganda"        = "#556B2F", "Guatemala"    = "#4682B4",
-  "Peru"          = "#D2691E", "Côte d'Ivoire"= "#708090",
-  "Nicaragua"     = "#BC8F8F", "Costa Rica"   = "#3CB371"
-)
-
-# --- PLOT 1 — PRECIPITATION STACKED AREA ---
-p_stack_precip <- ggplot(df_contrib_precip,
-                         aes(x = date_fmt, y = contribution,
-                             fill = pays)) +
-  geom_area(position = "stack", alpha = 0.85) +
-  scale_fill_manual(values = palette_pays) +
-  labs(title    = "Weighted precipitation index — contribution by country",
-       subtitle = "Each band shows w_i × precip_i(t). Sum = aggregated index.",
-       x = NULL, y = "Precipitation (mm, weighted)",
-       fill = NULL) +
-  theme_minimal(base_size = 10) +
-  scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
-  theme(legend.position = "right",
-        legend.text     = element_text(size = 8))
-
-# --- PLOT 2 — TEMPERATURE STACKED AREA ---
-p_stack_temp <- ggplot(df_contrib_temp,
-                       aes(x = date_fmt, y = contribution,
-                           fill = pays)) +
-  geom_area(position = "stack", alpha = 0.85) +
-  scale_fill_manual(values = palette_pays) +
-  labs(title    = "Weighted temperature index — contribution by country",
-       subtitle = "Each band shows w_i × temp_i(t). Sum = aggregated index.",
-       x = NULL, y = "Temperature (°C, weighted)",
-       fill = NULL) +
-  theme_minimal(base_size = 10) +
-  scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
-  theme(legend.position = "right",
-        legend.text     = element_text(size = 8))
-
-gridExtra::grid.arrange(p_stack_precip, p_stack_temp, ncol = 1)
-```
-
-The stacked area charts decompose the two production-weighted climate indices into their country-level contributions, revealing the structural dominance of a small number of producers in shaping the global climate signal.
-
-For precipitation, Brazil accounts for the largest single contribution throughout the entire 2000–2023 period, reflecting both its dominant production weight (approximately 35%) and its high absolute rainfall levels. Vietnam and Colombia form the next tier, together with Indonesia, whose contribution is particularly visible during the wet season peaks. The remaining ten countries collectively occupy the upper portion of the stack but individually contribute narrow bands, confirming that the precipitation index is effectively driven by the top four producers. The strong seasonal oscillation visible across the full stack is consistent with the monsoon and dry season cycles of the tropical producing regions. Notable dips in the Brazilian band around 2005 and 2021 correspond to documented drought episodes in Minas Gerais that triggered significant supply shortfalls and upward price pressure.
-
-For temperature, the structure is markedly more stable. Brazil again dominates the bottom band, but the contributions of all 14 countries are more uniform in relative terms — reflecting the fact that temperature varies less across producing regions than precipitation. The gradual upward drift of the total stack height over the period, most visible from 2015 onward, is the disaggregated counterpart of the warming trend identified in the aggregated temperature index and confirms that it is a broad-based phenomenon affecting multiple producing countries rather than a single-country artefact.
-
-```{r climate_anomalies, message=FALSE, fig.width=12, fig.height=7}
-
-# ----------------------------------------------------------
-# STEP 2 — ANOMALY HEATMAP
-# For each country and each month, the anomaly is defined as
-# the deviation from that country's long-run monthly mean
-# over 2000-2023. Standardising by the country's own mean
-# puts all countries on a comparable scale regardless of
-# their absolute climate levels.
-# ----------------------------------------------------------
-
-# --- PRECIPITATION ANOMALIES ---
-df_anom_precip <- df_precip_all %>%
-  filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
-  select(date, all_of(cols_precip)) %>%
-  pivot_longer(cols = all_of(cols_precip),
-               names_to  = "pays",
-               values_to = "valeur") %>%
-  mutate(pays = sub("precip_", "", pays)) %>%
-  group_by(pays) %>%
-  # Compute anomaly as deviation from country long-run mean
-  mutate(anomalie = valeur - mean(valeur, na.rm = TRUE)) %>%
-  ungroup() %>%
-  mutate(
-    pays     = recode(pays, !!!noms_affichage),
-    date_fmt = as.Date(paste0(date, "-01")),
-    # Order by production weight (most important at top)
-    pays = factor(pays,
-                  levels = noms_affichage[names(POIDS_PRODUCTION)])
-  )
-
-# --- TEMPERATURE ANOMALIES ---
-df_anom_temp <- df_temp_all %>%
-  filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
-  select(date, all_of(cols_temp)) %>%
-  pivot_longer(cols = all_of(cols_temp),
-               names_to  = "pays",
-               values_to = "valeur") %>%
-  mutate(pays = sub("temp_", "", pays)) %>%
-  group_by(pays) %>%
-  mutate(anomalie = valeur - mean(valeur, na.rm = TRUE)) %>%
-  ungroup() %>%
-  mutate(
-    pays     = recode(pays, !!!noms_affichage),
-    date_fmt = as.Date(paste0(date, "-01")),
-    pays = factor(pays,
-                  levels = noms_affichage[names(POIDS_PRODUCTION)])
-  )
-
-# --- HEATMAP — PRECIPITATION ---
-p_heatmap_precip <- ggplot(df_anom_precip,
-                           aes(x = date_fmt, y = pays,
-                               fill = anomalie)) +
-  geom_tile() +
-  scale_fill_gradient2(low = "#d73027", mid = "white", high = "#4575b4",
-                       midpoint = 0,
-                       name = "Anomaly\n(mm)") +
-  labs(title    = "Precipitation anomalies by country — 2000–2023",
-       subtitle = "Deviation from each country's 2000–2023 monthly mean. Blue = wetter than average, Red = drier.",
-       x = NULL, y = NULL) +
-  theme_minimal(base_size = 10) +
-  scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
-  theme(axis.text.y = element_text(size = 9),
-        legend.position = "right")
-
-# --- HEATMAP — TEMPERATURE ---
-p_heatmap_temp <- ggplot(df_anom_temp,
-                         aes(x = date_fmt, y = pays,
-                             fill = anomalie)) +
-  geom_tile() +
-  scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027",
-                       midpoint = 0,
-                       name = "Anomaly\n(°C)") +
-  labs(title    = "Temperature anomalies by country — 2000–2023",
-       subtitle = "Deviation from each country's 2000–2023 monthly mean. Red = warmer than average, Blue = cooler.",
-       x = NULL, y = NULL) +
-  theme_minimal(base_size = 10) +
-  scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
-  theme(axis.text.y = element_text(size = 9),
-        legend.position = "right")
-
-gridExtra::grid.arrange(p_heatmap_precip, p_heatmap_temp, ncol = 1)
-```
-
-The anomaly heatmaps provide a complementary view by highlighting episodes of abnormal climate conditions at the country level, abstracting from seasonal patterns and absolute levels.
-
-For precipitation, the most striking feature is the heterogeneity of anomaly patterns across countries — wet and dry episodes do not affect all producers simultaneously, which is consistent with the documented asymmetric effects of ENSO on different producing regions. Brazil shows a pronounced negative anomaly (red) around 2021, corresponding to the severe drought in Minas Gerais that contributed to the Arabica price spike of that year. Colombia displays a persistent positive anomaly (blue) during 2010–2011, consistent with the La Niña episode of that period which brought excess rainfall and leaf rust outbreaks to Colombian growing regions. Vietnam and Indonesia show alternating wet and dry episodes broadly aligned with ENSO cycles, while the smaller Central American producers — Honduras, Guatemala, Nicaragua — display high-frequency oscillations that partly reflect their more localised rainfall patterns.
-
-For temperature, the picture is notably different. India stands out with the highest anomaly amplitude of any country — large alternating red and blue blocks throughout the period — suggesting that Indian growing regions experience more pronounced temperature swings than other producers. Brazil and Vietnam both show a gradual drift toward positive anomalies (warmer than average) from approximately 2015 onward, which is consistent with the upward trend visible in the aggregated temperature index and reinforces the conclusion that the warming signal is structural rather than cyclical. Colombia and Indonesia, by contrast, show more balanced anomaly distributions with no clear directional trend, suggesting that their temperature environments have been more stable over the analysis period.
-
-Taken together, the two heatmaps confirm that climate shocks are geographically heterogeneous and that aggregating to a single global index necessarily smooths over country-specific episodes. This heterogeneity motivates the robustness check conducted in the Results section, which tests whether retaining the disaggregated national series improves predictive accuracy relative to the aggregated indices.
-
 ## Oceanic Niño Index (ONI)
 
 The Oceanic Niño Index (ONI) is the standard measure of the El Niño–Southern Oscillation (ENSO) phenomenon published by the National Oceanic and Atmospheric Administration (NOAA). It measures the three-month running average of sea surface temperature anomalies in the Niño 3.4 region of the central equatorial Pacific Ocean (5°N–5°S, 120°–170°W), expressed as a departure from a 30-year climatological baseline updated every five years.
 
-The ENSO cycle is one of the most extensively documented climate drivers of coffee price volatility. El Niño episodes — defined as ONI values above +0.5°C sustained for at least five consecutive months — are associated with severe droughts in Brazil and Colombia, reducing production and exerting upward pressure on prices. La Niña episodes (ONI below −0.5°C) bring excessive rainfall to parts of Central America and Southeast Asia, increasing the risk of fungal diseases such as coffee leaf rust.
+The NOAA ONI file reports values for overlapping three-month seasons (DJF, JFM, FMA, ..., NDJ) rather than individual calendar months. This format reflects the fact that ENSO classifications are based on three-month running averages to reduce noise. To align the ONI series with the monthly frequency of all other variables in the dataset, each three-month season is assigned to its central month: DJF → January, JFM → February, FMA → March, and so on.
 
-The variable retained is the ANOM column (temperature anomaly in °C), rather than the TOTAL column (absolute sea surface temperature). The anomaly captures the deviation from normal conditions and is therefore the operationally relevant measure for assessing El Niño or La Niña strength.
-
-### Data transformation: converting three-month seasons to calendar months
-
-The NOAA ONI file reports values for overlapping three-month seasons (DJF, JFM, FMA, ..., NDJ) rather than individual calendar months. This format reflects the fact that ENSO classifications are based on three-month running averages to reduce noise. To align the ONI series with the monthly frequency of all other variables in the dataset, each three-month season is assigned to its central month: DJF → January, JFM → February, FMA → March, and so on. This convention is standard in the climatological literature and corresponds to the practice used by NOAA itself in its official El Niño and La Niña advisories.
-
-This chunk reads the NOAA ONI file, converts its three-month seasonal format to individual calendar months, and produces the ENSO time series plot. The key processing step is the season-to-month mapping: the NOAA file reports overlapping three-month averages (DJF, JFM, etc.) rather than single months, so each season is assigned to its central month before the series can be aligned with the rest of the monthly dataset.
+*This chunk reads the NOAA ONI file, converts its three-month seasonal format to individual calendar months, and produces the ENSO time series plot. The key processing step is the season-to-month mapping: the NOAA file reports overlapping three-month averages (DJF, JFM, etc.) rather than single months, so each season is assigned to its central month before the series can be aligned with the rest of the monthly dataset.*
 
 ```{r oceanic_nino_index, message=FALSE}
 
@@ -1788,16 +1247,13 @@ df_oni <- df_raw_oni %>%
   mutate(annee = as.integer(annee),
          oni   = as.numeric(oni)) %>%
   filter(!is.na(annee), !is.na(oni)) %>%
-  # Apply the season-to-month lookup to build the date column
   mutate(mois = saison_vers_mois[saison],
          date = sprintf("%d-%02d", annee, mois)) %>%
   filter(date >= DATE_DEBUT & date <= DATE_FIN) %>%
   select(date, oni) %>%
   arrange(date)
 
-# Save to disk for reuse in the final assembly chunk
 write.csv(df_oni, file.path(PATH_OUTPUT, "oni_2000_2023.csv"), row.names = FALSE)
-
 
 # ----------------------------------------------------------
 # STEP 4 — ONI TIME SERIES PLOT
@@ -1818,10 +1274,8 @@ ggplot(df_oni_plot, aes(x = date_fmt)) +
   geom_hline(yintercept = c(-0.5, 0.5),
              linetype = "dashed", color = "grey50", linewidth = 0.5) +
   geom_hline(yintercept = 0, color = "grey30", linewidth = 0.3) +
-  # Red ribbon: fills between 0 and ONI only when ONI is positive
   geom_ribbon(aes(ymin = 0, ymax = ifelse(oni > 0, oni, 0)),
               fill = "#d73027", alpha = 0.3) +
-  # Blue ribbon: fills between ONI and 0 only when ONI is negative
   geom_ribbon(aes(ymin = ifelse(oni < 0, oni, 0), ymax = 0),
               fill = "#4575b4", alpha = 0.3) +
   geom_line(aes(y = oni), color = "grey20", linewidth = 0.6) +
@@ -1838,23 +1292,23 @@ ggplot(df_oni_plot, aes(x = date_fmt)) +
   scale_x_date(date_breaks = "2 years", date_labels = "%Y")
 ```
 
-The ONI series over 2000–2023 reveals an alternation between El Niño and La Niña episodes of varying intensity. The most severe El Niño episode of the period occurred in 2015–2016, with anomalies exceeding +2.5°C, making it one of the strongest on record. Strong La Niña episodes are visible in 2000–2001, 2007–2008, 2010–2011 and 2020–2022. Over the full period, La Niña months (89) outnumber El Niño months (71), with the remaining 128 months classified as neutral. The series fluctuates around zero with no long-term trend, suggesting stationarity — consistent with the known mean-reverting behaviour of ENSO cycles.
+The ONI series over 2000–2023 reveals an alternation between El Niño and La Niña episodes of varying intensity. The most severe El Niño episode of the period occurred in 2015–2016, with anomalies exceeding +2.5°C. Strong La Niña episodes are visible in 2000–2001, 2007–2008 and 2010–2011. Over the full period, La Niña months (89) outnumber El Niño months (71), with the remaining 128 months classified as neutral. The series fluctuates around zero with no long-term trend, suggesting stationarity, consistent with the known mean-reverting behaviour of ENSO cycles.
 
 ## Commitments of Traders (COT) — Managed Money Net Position
 
 The Commitments of Traders (COT) report is a weekly publication of the Commodity Futures Trading Commission (CFTC), the US regulatory authority for futures markets. It discloses the aggregate open positions held by different categories of market participants in futures and options contracts traded on US exchanges.
 
-This study uses the Disaggregated Futures-Only report, which divides market participants into four categories: Producer/Merchant/Processor/User (physical commercials), Swap Dealers, Managed Money (speculative funds) and Other Reportables. The Managed Money category encompasses commodity trading advisors, commodity pool operators and hedge funds that hold positions for speculative or investment purposes. This disaggregation was introduced by the CFTC in 2009 (with historical data backdated to June 2006) and is preferred over the legacy Commitments of Traders report because it provides a more precise separation between commercial and non-commercial participants.
+This study uses the Disaggregated Futures-Only report, which divides market participants into four categories: Producer/Merchant/Processor/User (physical commercials), Swap Dealers, Managed Money (speculative funds) and Other Reportables. The Managed Money category encompasses commodity trading advisors, commodity pool operators and hedge funds that hold positions for speculative or investment purposes. Historical data are available from June 2006 onward, which defines the start of the speculative positioning variable in the dataset.
 
 The variable constructed is the net position of the Managed Money category on the Coffee C contract (ICE Futures U.S., contract symbol KC):
 
 $$\text{Net}_{MM}(t) = \text{Long}_{MM}(t) - \text{Short}_{MM}(t)$$
 
-A positive net position indicates that speculative funds hold more long contracts than short, implying a net expectation of rising coffee prices. A negative net position signals a net bearish stance. The inclusion of this variable reflects the progressive financialisation of commodity markets since the 2000s, which has increased the influence of non-commercial investors on price formation, and the documented role of speculative positioning in coffee price volatility specifically.
+A positive net position indicates that speculative funds hold more long contracts than short, implying a net expectation of rising coffee prices. A negative net position signals a net bearish stance.
 
 Weekly observations are aggregated to monthly frequency by computing the arithmetic mean of all reports published within each calendar month. This averaging is preferred to using the last weekly observation because it is more robust to end-of-month position adjustments associated with contract expiry.
 
-This chunk reads and consolidates the ten CFTC Disaggregated COT files, extracts the Coffee C contract rows, computes the Managed Money net position for each weekly report, and aggregates to monthly frequency. Each file covers a different time span — one consolidated historical file for 2006–2015 and one annual file per year from 2016 onward — so all ten are stacked into a single data frame before any aggregation takes place. The resulting monthly series is saved to disk and visualised as a ribbon chart distinguishing net long from net short positioning.
+*This chunk reads and consolidates the ten CFTC Disaggregated COT files, extracts the Coffee C contract rows, computes the Managed Money net position for each weekly report, and aggregates to monthly frequency. Each file covers a different time span, one consolidated historical file for 2006–2015 and one annual file per year from 2016 onward, so all ten are stacked into a single data frame before any aggregation takes place. The resulting monthly series is saved to disk and visualised as a ribbon chart distinguishing net long from net short positioning.*
 
 ```{r commitments_of_traders, message=FALSE}
 
@@ -1870,9 +1324,9 @@ This chunk reads and consolidates the ten CFTC Disaggregated COT files, extracts
 # origin for date serials.
 #
 # The Managed Money category encompasses commodity trading
-# advisors, commodity pool operators and hedge funds — i.e.
+# advisors, commodity pool operators and hedge funds (i.e.
 # purely speculative participants with no physical exposure
-# to the underlying commodity.
+# to the underlying commodity).
 # ----------------------------------------------------------
 
 lire_cot_fichier <- function(fichier) {
@@ -1986,13 +1440,17 @@ ggplot(df_cot_plot, aes(x = date_fmt)) +
   scale_y_continuous(labels = scales::comma)
 ```
 
-The Managed Money net position on the Coffee C contract shows considerable variation over the 2006–2023 period, oscillating between a peak of approximately +60,000 net long contracts in 2008 and a trough of nearly −115,000 net short contracts in 2018–2019. The series reveals several distinct phases: a predominantly long positioning in 2007–2008 coinciding with the commodity price boom, a net short episode in 2012–2013 during the price decline driven by large Brazilian harvests, and a recovery toward net long positions from 2014 onward. The most extreme episode of the period, in 2018–2019, reflects heightened uncertainty among speculative participants during a prolonged period of price weakness driven by successive supply surpluses. The mean-reverting behaviour of the series and its co-movement with price cycles suggests it captures relevant market sentiment information for forecasting purposes.
+The Managed Money net position on the Coffee C contract shows considerable variation over the 2006–2023 period, oscillating between a peak of approximately +60,000 net long contracts in 2008 and a trough of nearly −115,000 net short contracts in 2018–2019. The series reveals several distinct phases: a predominantly long positioning in 2007–2008 coinciding with the commodity price boom, a net short episode in 2012–2013 during the price decline of that period, and a recovery toward net long positions from 2014 onward. The most extreme net short episode of the period occurred in 2018–2019, followed by a gradual return toward net long positioning from 2020 onward.
 
 ## Final Dataset Assembly
 
-This chunk assembles the final dataset used throughout the modelling phase. It reloads the four climate and speculative indices saved to disk by earlier chunks, then joins all variables onto a complete monthly date spine to form the monthly dataset. The result is written to disk as the definitive analytical input for all subsequent chunks.
+*This chunk assembles the final dataset used throughout the modelling phase. It reloads the four climate and speculative indices saved to disk by earlier chunks, then joins all variables onto a complete monthly date spine to form the monthly dataset. The result is written to disk as the definitive analytical input for all subsequent chunks.*
 
 ```{r assemblage, message=FALSE}
+
+# ----------------------------------------------------------
+# RELOAD MACROECONOMIC SERIES SAVED TO DISK BY CHUNK macro
+# ----------------------------------------------------------
 
 cpi <- read_csv(file.path(PATH_OUTPUT, "cpi.csv"), show_col_types = FALSE)
 wti <- read_csv(file.path(PATH_OUTPUT, "wti.csv"), show_col_types = FALSE)
@@ -2056,8 +1514,15 @@ dataset_mensuel <- dates_cibles %>%
   left_join(df_temp_f,       by = "date") %>%   # Weighted temperature index
   left_join(df_oni_f,        by = "date") %>%   # ONI / ENSO index
   left_join(df_cot_f,        by = "date") %>%   # COT Managed Money net position
+  rename(
+    arabica_price  = prix_arabica,   # Rename French column names to English
+    robusta_price  = prix_robusta,
+    sugar_price    = prix_sucre,
+    cocoa_price    = prix_cacao,
+    consumption    = consommation,
+    exports        = exportations
+  ) %>%
   mutate(date_fmt = as.Date(paste0(date, "-01")))
-
 
 # ----------------------------------------------------------
 # STEP 3 — SAVE THE DATASET TO DISK
@@ -2072,9 +1537,9 @@ write.csv(dataset_mensuel %>% select(-date_fmt),
           row.names = FALSE)
 ```
 
-This chunk produces a compact summary of the final dataset. Observation and variable counts are computed dynamically from the assembled data frame rather than hard-coded, so the table updates automatically if the analysis period or variable set changes. The dataset loses two columns in the count (`date` and `date_fmt`) since these are identifiers rather than analytical variables.
+*This chunk produces a compact summary of the final dataset. Observation and variable counts are computed dynamically from the assembled data frame rather than hard-coded, so the table updates automatically if the analysis period or variable set changes. The dataset loses two columns in the count (`date` and `date_fmt`) since these are identifiers rather than analytical variables.*
 
-```{r summar final datasets, message=FALSE}
+```{r summary_final_datasets, message=FALSE}
 
 # Build the summary table dynamically from the assembled dataset.
 # Variable counts exclude the two date identifier columns
@@ -2097,7 +1562,7 @@ kable(df_summary,
 
 The final dataset is summarised in the table above. It covers the full 2000–2023 period with 288 observations across 16 variables.
 
-This chunk audits the missing value structure of the monthly dataset and displays only the variables that contain at least one missing observation. All three gaps identified here are expected and documented: they arise from data availability constraints established in the data collection phase, not from processing errors. The table is computed dynamically so that counts update automatically if the dataset changes.
+*This chunk audits the missing value structure of the monthly dataset and displays only the variables that contain at least one missing observation. All three gaps identified here are expected and documented: they arise from data availability constraints established in the data collection phase, not from processing errors. The table is computed dynamically so that counts update automatically if the dataset changes.*
 
 ```{r missing_values, message=FALSE}
 
@@ -2136,11 +1601,11 @@ kable(df_na,
                 font_size = 11, full_width = FALSE)
 ```
 
-Three variables contain missing values, all of which are expected and arise from data availability constraints documented in the preceding sections. First, Robusta futures prices are missing for the 96 months spanning January 2000 to December 2007, as Refinitiv data for this contract are only available from 2008 onward. Models using Robusta as the dependent variable are therefore estimated on the 2008–2023 sub-period only. Second, the Managed Money net position (COT) is missing for the 77 months preceding June 2006, as the CFTC Disaggregated Futures-Only report was not published before that date. Third, world consumption is missing for the 12 months of 2000, reflecting incomplete EU reporting in the USDA PSD database for the first crop year of the analysis period. No imputation is applied to any of these variables — the missing values are handled directly in the modelling phase by restricting relevant model specifications to the sub-periods for which all required variables are available.
+Three variables contain missing values, all of which are expected and arise from data availability constraints documented in the preceding sections. First, Robusta futures prices are missing for the 96 months spanning January 2000 to December 2007, as Refinitiv data for this contract are only available from 2008 onward. Models using Robusta as the dependent variable are therefore estimated on the 2008–2023 sub-period only. Second, the Managed Money net position (COT) is missing for the 77 months preceding June 2006, as the CFTC Disaggregated Futures-Only report was not published before that date. Third, world consumption is missing for the 12 months of 2000, reflecting incomplete country-level reporting in the USDA PSD database for the first crop year of the analysis period. No imputation is applied to any of these variables; the missing values are handled directly in the modelling phase by restricting relevant model specifications to the sub-periods for which all required variables are available.
 
-All variables are initially retained in their original levels for exploratory analysis. The question of whether individual series require transformation — through first-differencing, log transformation, or both — prior to model estimation is addressed in the stationarity analysis in Section 4. Variables found to be non-stationary in levels will be differenced or transformed accordingly before inclusion in the econometric benchmark models (ARIMAX and multiple linear regression). Machine learning models, being assumption-free with respect to stationarity, will be estimated on both the original and transformed series for comparison purposes.
+All variables are initially retained in their original levels for exploratory analysis. The question of whether individual series require transformation prior to model estimation is addressed in the stationarity analysis in Section 4.
 
-Two additional datasets are assembled using the variety-specific variables constructed above. The Arabica dataset replaces the global climate indices and world fundamentals with their Arabica-specific counterparts, while the Robusta dataset does the same for Robusta. All other variables — macroeconomic, speculative and the ONI index — are retained unchanged, as they are not variety-specific by nature.
+*This chunk assembles the two variety-specific datasets used in the robustness checks. Both follow the same structure as the main monthly dataset but replace the global climate indices and world supply-demand fundamentals with their variety-specific counterparts. All other variables, including macroeconomic series, the COT net position and the ONI index, are retained unchanged.*
 
 ```{r assemblage_vs, message=FALSE}
 
@@ -2155,23 +1620,18 @@ Two additional datasets are assembled using the variety-specific variables const
 df_precip_ara_f <- read_csv(
   file.path(PATH_OUTPUT, "indice_precip_arabica_2000_2023.csv"),
   show_col_types = FALSE)
-
 df_temp_ara_f <- read_csv(
   file.path(PATH_OUTPUT, "indice_temp_arabica_2000_2023.csv"),
   show_col_types = FALSE)
-
 df_precip_rob_f <- read_csv(
   file.path(PATH_OUTPUT, "indice_precip_robusta_2000_2023.csv"),
   show_col_types = FALSE)
-
 df_temp_rob_f <- read_csv(
   file.path(PATH_OUTPUT, "indice_temp_robusta_2000_2023.csv"),
   show_col_types = FALSE)
-
 df_usda_ara_f <- read_csv(
   file.path(PATH_OUTPUT, "fondamentaux_arabica_2000_2023.csv"),
   show_col_types = FALSE)
-
 df_usda_rob_f <- read_csv(
   file.path(PATH_OUTPUT, "fondamentaux_robusta_2000_2023.csv"),
   show_col_types = FALSE)
@@ -2196,6 +1656,13 @@ dataset_arabica_vs <- dates_cibles %>%
   left_join(df_temp_ara_f,   by = "date") %>%   # Arabica temp index
   left_join(df_oni_f,        by = "date") %>%
   left_join(df_cot_f,        by = "date") %>%
+  rename(
+    arabica_price = prix_arabica,
+    sugar_price   = prix_sucre,
+    cocoa_price   = prix_cacao,
+    consumption   = consommation_ara,
+    exports       = exportations_ara
+  ) %>%
   mutate(date_fmt = as.Date(paste0(date, "-01")))
 
 
@@ -2218,6 +1685,13 @@ dataset_robusta_vs <- dates_cibles %>%
   left_join(df_temp_rob_f,   by = "date") %>%   # Robusta temp index
   left_join(df_oni_f,        by = "date") %>%
   left_join(df_cot_f,        by = "date") %>%
+  rename(
+    robusta_price = prix_robusta,
+    sugar_price   = prix_sucre,
+    cocoa_price   = prix_cacao,
+    consumption   = consommation_rob,
+    exports       = exportations_rob
+  ) %>%
   mutate(date_fmt = as.Date(paste0(date, "-01")))
 
 
@@ -2228,7 +1702,6 @@ dataset_robusta_vs <- dates_cibles %>%
 write.csv(dataset_arabica_vs %>% select(-date_fmt),
           file.path(PATH_OUTPUT, "dataset_arabica_vs_final.csv"),
           row.names = FALSE)
-
 write.csv(dataset_robusta_vs %>% select(-date_fmt),
           file.path(PATH_OUTPUT, "dataset_robusta_vs_final.csv"),
           row.names = FALSE)
@@ -2243,7 +1716,7 @@ cat("Robusta VS dataset:", nrow(dataset_robusta_vs), "obs,",
 
 ## Descriptive Statistics
 
-This chunk computes descriptive statistics for all numeric variables in the monthly dataset and renders them as a single summary table. Statistics are computed on non-missing observations only, so each variable's N reflects its actual available sample rather than the full 288-month spine. The `do.call(rbind, lapply(...))` pattern iterates over variable names and stacks the results into a single data frame without requiring any external summarisation package.
+*This chunk computes descriptive statistics for all numeric variables in the monthly dataset and renders them as a single summary table. Statistics are computed on non-missing observations only, so each variable's N reflects its actual available sample rather than the full 288-month spine. The `do.call(rbind, lapply(...))` pattern iterates over variable names and stacks the results into a single data frame without requiring any external summarisation package.*
 
 ```{r eda_stats}
 
@@ -2288,20 +1761,19 @@ kable(table_stats,
                 font_size = 10, full_width = TRUE)
 ```
 
-The descriptive statistics confirm several expected properties of the data. Arabica futures prices average 1.31 USD/lb over the full 2000–2023 period, with a maximum of 2.84 USD/lb reflecting the price spikes of 2011 and 2021–2022, and a positive skewness of 0.69 indicating occasional sharp upward price movements. Robusta prices, available only from 2008, average 1,837 USD/tonne with a near-symmetric distribution (skewness of 0.11). The Federal Funds Rate exhibits a large gap between its mean (1.79%) and median (1.10%), reflecting the prolonged near-zero rate environment of 2009–2015, with a positive skewness of 0.98 driven by the high-rate episodes of 2000–2007 and 2022–2023. The CPI ranges from 168.8 to 307.8, confirming the upward trend visible in the time series plot and the non-stationarity expected from this variable. The Oceanic Niño Index oscillates around a mean of −0.02°C, consistent with its known mean-reverting behaviour around zero. The Managed Money net position shows a large divergence between its mean (2,168 contracts) and median (6,923 contracts), driven by the extreme net short episodes of 2018–2019 reaching nearly −108,000 contracts, reflected in its negative skewness of −0.81.
+The descriptive statistics confirm several expected properties of the data. Arabica futures prices average 1.31 USD/lb over the full 2000–2023 period, with a maximum of 2.84 USD/lb and a positive skewness of 0.69 indicating occasional sharp upward price movements. Robusta prices, available only from 2008, average 1,837 USD/tonne with a near-symmetric distribution (skewness of 0.11). The Federal Funds Rate exhibits a large gap between its mean (1.79%) and median (1.10%), with a positive skewness of 0.98 consistent with the alternation between near-zero and elevated rate environments visible over the analysis period. The CPI ranges from 168.8 to 307.8, confirming the upward trend visible in the time series plot and the non-stationarity expected from this variable. The Oceanic Niño Index oscillates around a mean of −0.02°C, consistent with its known mean-reverting behaviour around zero. The Managed Money net position shows a large divergence between its mean (2,168 contracts) and median (6,923 contracts), driven by the extreme net short episodes reaching nearly −108,000 contracts, reflected in its negative skewness of −0.81.
 
 ## Time Series Overview
 
-This chunk produces the first of two time series overview panels, covering the two dependent variables and two key macroeconomic drivers. Each series is drawn from the fully assembled monthly dataset rather than from the individual source objects, confirming that the join operations in the assembly chunk preserved all observations correctly. Robusta rows with NA prices are filtered out before plotting to avoid a misleading gap on the left of that panel.
+*This chunk produces the first of two time series overview panels, covering the two dependent variables and two key macroeconomic drivers. Each series is drawn from the fully assembled monthly dataset rather than from the individual source objects, confirming that the join operations in the assembly chunk preserved all observations correctly. Robusta rows with NA prices are filtered out before plotting to avoid a misleading gap on the left of that panel.*
 
 ```{r eda_series_1, fig.width=11, fig.height=6}
-
 # ----------------------------------------------------------
 # PANEL 1 — ARABICA FUTURES PRICE (2000-2023)
 # Drawn from the full monthly dataset; the complete 288-row
 # spine is used since Arabica has no missing observations.
 # ----------------------------------------------------------
-p_arabica <- ggplot(dataset_mensuel, aes(date_fmt, prix_arabica)) +
+p_arabica <- ggplot(dataset_mensuel, aes(date_fmt, arabica_price)) +
   geom_line(color = "#8B4513", linewidth = 0.7) +
   labs(title = "Arabica futures (ICE)", x = NULL, y = "USD/lb") +
   theme_minimal(base_size = 10) +
@@ -2312,10 +1784,10 @@ p_arabica <- ggplot(dataset_mensuel, aes(date_fmt, prix_arabica)) +
 # NA rows (2000-2007) are dropped before plotting so the
 # x-axis starts naturally at the first available observation.
 # ----------------------------------------------------------
-p_robusta <- ggplot(filter(dataset_mensuel, !is.na(prix_robusta)),
-                    aes(date_fmt, prix_robusta)) +
+p_robusta <- ggplot(filter(dataset_mensuel, !is.na(robusta_price)),
+                    aes(date_fmt, robusta_price)) +
   geom_line(color = "#2E8B57", linewidth = 0.7) +
-  labs(title = "Robusta futures (LIFFE)", x = NULL, y = "USD/tonne") +
+  labs(title = "Robusta futures (ICE Futures Europe)", x = NULL, y = "USD/tonne") +
   theme_minimal(base_size = 10) +
   scale_x_date(date_breaks = "2 years", date_labels = "%Y")
 
@@ -2347,7 +1819,9 @@ gridExtra::grid.arrange(p_arabica, p_robusta, p_wti, p_dxy,
                         top  = "Price and macroeconomic variables, 2000–2023")
 ```
 
-This chunk produces the second time series overview panel, covering the four climate and speculative variables. It mirrors the structure of the previous panel but groups variables that share a common interpretive theme — supply-side conditions (precipitation, temperature, ENSO) and market positioning (COT) — rather than mixing them with price series. The ONI and COT panels reuse the dual-ribbon design introduced in their dedicated processing chunks for visual consistency.
+The four series exhibit markedly different dynamics over the analysis period. Arabica futures prices display two pronounced peaks, one around 2011 and another in 2021–2022, separated by a prolonged trough over 2013–2019. Robusta prices, available from 2008, follow a broadly similar trajectory at higher absolute levels in USD/tonne terms, declining from an initial peak near 2008 to a trough around 2015–2016 before recovering sharply from 2021 onward. WTI crude oil displays the highest volatility of the four series, with a sharp spike in 2008, a collapse in 2020, and a recovery above 100 USD/barrel in 2022. The US Dollar Index follows a broad multi-year cycle, declining from above 110 in the early 2000s to a trough near 70 in 2008, recovering through the 2010s, and rising sharply from 2021 onward.
+
+*This chunk produces the second time series overview panel, covering the four climate and speculative variables. It mirrors the structure of the previous panel but groups variables that share a common interpretive theme, supply-side conditions (precipitation, temperature, ENSO) and market positioning (COT), rather than mixing them with price series. The ONI and COT panels reuse the dual-ribbon design introduced in their dedicated processing chunks for visual consistency.*
 
 ```{r eda_series_2, fig.width=11, fig.height=6}
 
@@ -2429,22 +1903,19 @@ gridExtra::grid.arrange(p_precip, p_temp, p_oni, p_cot,
                         top  = "Climate and speculative variables, 2000–2023")
 ```
 
-Arabica prices spent much of the early 2000s below USD 1.00/lb, reflecting the tail end of the oversupply crisis that followed the ICO quota collapse. The series then surged to nearly USD 3.00/lb in 2011 on the back of supply shortfalls in Brazil and Colombia, before declining steadily through the mid-2010s. The second major spike, in 2021–2022, was driven by a combination of severe frosts in Brazil's Minas Gerais region, currency depreciation and post-pandemic logistics bottlenecks. Robusta prices tell a broadly similar story from 2008 onward, though at structurally lower absolute levels, with a striking upward trend emerging from 2022 as Vietnamese production contracted sharply.
-
-WTI oil traces the familiar commodity super-cycle of the 2000s, peaking just below USD 150/barrel in mid-2008 before collapsing in the financial crisis, partially recovering through 2014, and crashing again in 2020. The Dollar Index moves broadly in the opposite direction — a strong dollar in the early 2000s giving way to a prolonged depreciation, then a renewed strengthening from 2014 and a sharp post-2021 surge that coincided with the Federal Reserve's tightening cycle.
-
-Among the climate variables, precipitation shows a stable seasonal rhythm throughout the period with no trend, while the temperature index drifts upward noticeably from the mid-2010s — a pattern that will be flagged in the stationarity tests below. The ONI series oscillates around zero as expected, with the record-strength 2015–2016 El Niño clearly standing out. The COT net position reflects the progressive financialisation of the coffee market: broadly long during the 2007–2008 commodity boom, swinging to extreme net short territory around 2018–2019, and remaining volatile thereafter.
+Among the climate variables, the precipitation index displays a stable seasonal rhythm with no discernible trend, while the temperature index drifts upward noticeably from the mid-2010s, a pattern that will be examined in the stationarity analysis below. The ONI series oscillates around zero as expected, with the 2015–2016 episode standing out as the most pronounced of the period. The COT net position alternates between extended net long and net short episodes, with the most extreme net short positioning occurring around 2018–2019.
 
 ## Correlation Analysis
 
-The correlation matrix below is computed over the 2008–2023 sub-period, which is the longest interval for which all variables — including Robusta prices and the COT net position — are simultaneously available. Pearson correlation coefficients are reported, as they are standard for continuous economic and financial series and measure the degree of linear association between variables — consistent with the linear benchmark models estimated in the following section.
+The correlation matrix below is computed over the 2008–2023 sub-period, which is the longest interval for which all variables, including Robusta prices and the COT net position, are simultaneously available. Pearson correlation coefficients are reported, as they are standard for continuous economic and financial series and measure the degree of linear association between variables, consistent with the linear benchmark models estimated in the following section.
 
 The coefficient between two variables $X$ and $Y$ is defined as:
 
 $$r_{XY} = \frac{\sum_{t=1}^{T}(X_t - \bar{X})(Y_t - \bar{Y})}{\sqrt{\sum_{t=1}^{T}(X_t - \bar{X})^2 \cdot \sum_{t=1}^{T}(Y_t - \bar{Y})^2}}$$
 
-where $T$ denotes the number of observations, and coefficients range from $-1$ to $+1$.\
-This chunk computes the Pearson correlation matrix across all 16 variables and renders it as a hierarchically clustered heatmap, restricted to the 2008–2023 sub-period so that the matrix reflects a complete and balanced comparison across all variable pairs. `na.omit()` is applied after the date filter to remove any remaining sporadic missing values before passing the data to `cor()`.
+where $T$ denotes the number of observations, and coefficients range from $-1$ to $+1$.
+
+*This chunk computes the Pearson correlation matrix across all 16 variables and renders it as a hierarchically clustered heatmap, restricted to the 2008–2023 sub-period so that the matrix reflects a complete and balanced comparison across all variable pairs. `na.omit()` is applied after the date filter to remove any remaining sporadic missing values before passing the data to `cor()`.*
 
 ```{r eda_correlation, fig.width=9, fig.height=8}
 
@@ -2452,9 +1923,9 @@ This chunk computes the Pearson correlation matrix across all 16 variables and r
 # The order follows the variable grouping in the dataset table:
 # dependent variables first, then spillovers, macroeconomic,
 # fundamentals, climate and speculative variables last.
-vars_corr <- c("prix_arabica", "prix_robusta", "prix_sucre", "prix_cacao",
+vars_corr <- c("arabica_price", "robusta_price", "sugar_price", "cocoa_price",
                "cpi", "wti", "fed_funds_rate", "dxy",
-               "production", "consommation", "exportations", "ending_stocks",
+               "production", "consumption", "exports", "ending_stocks",
                "indice_precip", "indice_temp", "oni", "cot_net_mm")
 
 # Restrict to 2008-2023: the longest window for which all 16
@@ -2477,7 +1948,6 @@ labels_corr <- c("Arabica", "Robusta", "Sugar", "Cocoa",
                  "CPI", "WTI", "Fed Funds Rate", "DXY",
                  "Production", "Consumption", "Exports", "Ending stocks",
                  "Precipitation", "Temperature", "ONI", "COT net MM")
-
 colnames(mat_corr) <- rownames(mat_corr) <- labels_corr
 
 # Render the correlation heatmap.
@@ -2505,23 +1975,23 @@ corrplot(mat_corr,
          mar         = c(0, 0, 2, 0))
 ```
 
-The correlation matrix reveals several patterns of interest. Among the price variables, Arabica and Sugar display the strongest pairwise correlation (0.71), consistent with the land substitution dynamics between the two crops in Brazil. Arabica and Robusta are also moderately correlated (0.67), reflecting their common exposure to global demand conditions and macroeconomic drivers, despite their distinct supply structures.
+The correlation matrix reveals several patterns of interest. Among the price variables, Arabica and Sugar display the strongest pairwise correlation (0.71), while Arabica and Robusta are moderately correlated (0.67). The most salient feature of the matrix is the high degree of collinearity among the macroeconomic and fundamental variables, as Production, Consumption, Exports and CPI form a tightly correlated cluster with pairwise coefficients ranging from 0.73 to 0.92, reflecting their common upward trends over the period. This multicollinearity motivates the principal component analysis conducted in the following section.
 
-The most salient feature of the matrix is the high degree of collinearity among the macroeconomic and fundamental variables. Production, Consumption, Exports and CPI form a tightly correlated cluster, with pairwise coefficients ranging from 0.73 to 0.94, driven largely by their common upward trends over the period. This multicollinearity is a challenge for commodity price modelling and motivates the principal component analysis conducted in the following section.
-
-Arabica prices show a moderate negative correlation with Ending Stocks (−0.46) and with the ONI index (−0.36), suggesting that supply surpluses and La Niña conditions — which are associated with favourable growing conditions in key producing regions — tend to depress prices. The correlation between Arabica and the COT net position (0.57) points to a meaningful speculative dimension in price formation, consistent with the financialisation literature. WTI and DXY display a notable negative correlation (−0.52), reflecting the well-documented inverse relationship between the dollar and commodity prices. Climate variables show relatively weak correlations with prices in levels, which is not surprising given that their influence on supply operates with a lag and through non-linear channels better captured by the machine learning models.
+Arabica prices show a moderate negative correlation with Ending Stocks (−0.46) and with the ONI index (−0.36). The correlation between Arabica and the COT net position (0.57) is among the strongest observed between a non-price predictor and a price variable. WTI and DXY display a notable negative correlation (−0.52). Climate variables show relatively weak correlations with prices in levels, with coefficients generally below 0.20 in absolute value.
 
 ## Principal Component Analysis
 
-This chunk runs a principal component analysis on the 14 explanatory variables to quantify the multicollinearity already suggested by the correlation matrix. The PCA is performed on the same 2008–2023 sub-period, with all variables standardised to zero mean and unit variance before decomposition. No component is used downstream in the forecasting models; the analysis is purely diagnostic and serves only to confirm the extent of redundancy in the predictor set.
+The high degree of collinearity observed in the correlation matrix motivates a principal component analysis of the predictor space. The PCA is conducted purely as a diagnostic tool to quantify the extent of redundancy among the 14 explanatory variables; no principal component is retained as a regressor in the forecasting models.
+
+*This chunk runs a principal component analysis on the 14 explanatory variables to quantify the multicollinearity already suggested by the correlation matrix. The PCA is performed on the same 2008–2023 sub-period, with all variables standardised to zero mean and unit variance before decomposition. No component is used downstream in the forecasting models; the analysis is purely diagnostic and serves only to confirm the extent of redundancy in the predictor set.*
 
 ```{r pca, fig.width=10, fig.height=5}
 
 # The two dependent variables (Arabica and Robusta prices) are
 # excluded from the PCA: the goal is to characterise the
 # structure of the predictor space, not to include targets.
-vars_pca <- c("prix_sucre", "prix_cacao", "cpi", "wti", "fed_funds_rate",
-              "dxy", "production", "consommation", "exportations",
+vars_pca <- c("sugar_price", "cocoa_price", "cpi", "wti", "fed_funds_rate",
+              "dxy", "production", "consumption", "exports",
               "ending_stocks", "indice_precip", "indice_temp",
               "oni", "cot_net_mm")
 
@@ -2608,12 +2078,26 @@ p_scree <- ggplot(df_scree[1:10, ], aes(x = PC)) +
 # ----------------------------------------------------------
 
 p_scree
+
+# ----------------------------------------------------------
+# STEP 5 — VARIANCE EXPLAINED TABLE
+# Displays the individual and cumulative variance explained
+# by the first five principal components, complementing the
+# scree plot with exact numerical values.
+# ----------------------------------------------------------
+kable(data.frame(
+  Component  = paste0("PC", 1:5),
+  Individual = round(var_exp[1:5], 1),
+  Cumulative = round(var_cum[1:5], 1)
+),
+col.names = c("Component", "Variance explained (%)", "Cumulative (%)"),
+booktabs  = TRUE,
+caption   = "Variance explained by the first five principal components") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = FALSE)
 ```
 
-
-The scree plot indicates that PC1 captures 36.0% of the total variance in the predictor space, and five components are needed to cross the conventional 80% threshold. This relatively slow accumulation confirms that the predictor set is genuinely multidimensional rather than dominated by a single underlying factor, even though strong pairwise collinearity exists among specific subsets of variables, as shown in the correlation matrix above.
-
-The tight clustering of Production, Consumption and Exports along nearly identical directions confirms the multicollinearity already observed in the correlation matrix. These variables carry largely redundant information and will require careful treatment in the linear benchmark models — either through variable selection or by retaining only one representative from this group.
+The scree plot and accompanying table confirm that the predictor set is genuinely multidimensional, with five components required to cross the conventional 80% threshold. No single factor dominates the variance structure, even though strong pairwise collinearity exists among specific subsets of variables as shown in the correlation matrix above.
 
 ## Stationarity Tests
 
