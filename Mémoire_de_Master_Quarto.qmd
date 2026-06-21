@@ -1640,7 +1640,9 @@ df_usda_rob_f <- read_csv(
 # ----------------------------------------------------------
 # ARABICA VARIETY-SPECIFIC DATASET
 # Uses Arabica-specific climate indices and fundamentals.
-# All other variables identical to dataset_mensuel.
+# Column names from df_usda_ara_f are kept with their _ara
+# suffix to avoid conflicts with the global consumption and
+# exports columns from dataset_mensuel.
 # ----------------------------------------------------------
 
 dataset_arabica_vs <- dates_cibles %>%
@@ -1659,9 +1661,9 @@ dataset_arabica_vs <- dates_cibles %>%
   rename(
     arabica_price = prix_arabica,
     sugar_price   = prix_sucre,
-    cocoa_price   = prix_cacao,
-    consumption   = consommation_ara,
-    exports       = exportations_ara
+    cocoa_price   = prix_cacao
+    # consommation_ara and exportations_ara keep their suffixes
+    # to avoid conflict with global consumption and exports
   ) %>%
   mutate(date_fmt = as.Date(paste0(date, "-01")))
 
@@ -1669,7 +1671,9 @@ dataset_arabica_vs <- dates_cibles %>%
 # ----------------------------------------------------------
 # ROBUSTA VARIETY-SPECIFIC DATASET
 # Uses Robusta-specific climate indices and fundamentals.
-# All other variables identical to dataset_mensuel.
+# Column names from df_usda_rob_f are kept with their _rob
+# suffix to avoid conflicts with the global consumption and
+# exports columns from dataset_mensuel.
 # ----------------------------------------------------------
 
 dataset_robusta_vs <- dates_cibles %>%
@@ -1688,9 +1692,9 @@ dataset_robusta_vs <- dates_cibles %>%
   rename(
     robusta_price = prix_robusta,
     sugar_price   = prix_sucre,
-    cocoa_price   = prix_cacao,
-    consumption   = consommation_rob,
-    exports       = exportations_rob
+    cocoa_price   = prix_cacao
+    # consommation_rob and exportations_rob keep their suffixes
+    # to avoid conflict with global consumption and exports
   ) %>%
   mutate(date_fmt = as.Date(paste0(date, "-01")))
 
@@ -2000,6 +2004,7 @@ labels_pca <- c("Sugar", "Cocoa", "CPI", "WTI", "Fed Funds Rate",
                 "Ending stocks", "Precipitation", "Temperature",
                 "ONI", "COT net MM")
 
+
 # ----------------------------------------------------------
 # STEP 1 — STANDARDISE THE PREDICTOR MATRIX
 # scale() centres each variable to zero mean and scales to
@@ -2045,26 +2050,45 @@ df_scree <- data.frame(
 # ----------------------------------------------------------
 # STEP 3 — SCREE PLOT (FIRST 10 COMPONENTS)
 # Bars show individual variance explained per component.
-# The red line traces cumulative variance, and the dashed
-# horizontal line marks the 80% threshold — a common
-# criterion for determining how many components to retain.
+# The brown cumulative line traces variance accumulated across
+# components. The dashed horizontal line marks the 80%
+# threshold. Value labels are added above each bar and on
+# the cumulative line points for readability.
 # Only the first 10 components are shown since the remaining
 # four contribute negligible variance individually.
 # ----------------------------------------------------------
 
 p_scree <- ggplot(df_scree[1:10, ], aes(x = PC)) +
   geom_bar(aes(y = Variance), stat = "identity",
-           fill = "steelblue", alpha = 0.7) +
+           fill = "#2E5090", alpha = 0.8, width = 0.7) +
+  geom_text(aes(y = Variance,
+                label = paste0(round(Variance, 1), "%")),
+            vjust = -0.5, size = 2.8,
+            color = "#2E5090", fontface = "bold") +
   geom_line(aes(y = Cumulative, group = 1),
-            color = "red", linewidth = 1) +
-  geom_point(aes(y = Cumulative), color = "red", size = 2) +
-  geom_hline(yintercept = 80, linetype = "dashed", color = "grey40") +
-  annotate("text", x = 2, y = 82,
-           label = "80% threshold", color = "grey40", size = 3) +
+            color = "#8B4513", linewidth = 1) +
+  geom_point(aes(y = Cumulative),
+             color = "#8B4513", size = 2.5) +
+  geom_text(aes(y = Cumulative,
+                label = paste0(round(Cumulative, 1), "%")),
+            vjust = -0.8, size = 2.5, color = "#8B4513") +
+  geom_hline(yintercept = 80, linetype = "dashed",
+             color = "grey40", linewidth = 0.5) +
+  annotate("text", x = 1.5, y = 82.5,
+           label = "80% threshold", color = "grey40",
+           size = 3, hjust = 0) +
+  scale_y_continuous(limits = c(0, 110),
+                     breaks = seq(0, 100, 20)) +
   labs(title    = "PCA — Variance explained by component",
-       subtitle = "Bars: individual variance | Red line: cumulative variance",
+       subtitle = "Bars: individual variance (%)  |  Brown line: cumulative variance (%)",
        x = NULL, y = "Variance explained (%)") +
-  theme_minimal(base_size = 11)
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+    plot.title         = element_text(face = "bold"),
+    axis.text.x        = element_text(size = 10)
+  )
 
 
 # ----------------------------------------------------------
@@ -2078,26 +2102,9 @@ p_scree <- ggplot(df_scree[1:10, ], aes(x = PC)) +
 # ----------------------------------------------------------
 
 p_scree
-
-# ----------------------------------------------------------
-# STEP 5 — VARIANCE EXPLAINED TABLE
-# Displays the individual and cumulative variance explained
-# by the first five principal components, complementing the
-# scree plot with exact numerical values.
-# ----------------------------------------------------------
-kable(data.frame(
-  Component  = paste0("PC", 1:5),
-  Individual = round(var_exp[1:5], 1),
-  Cumulative = round(var_cum[1:5], 1)
-),
-col.names = c("Component", "Variance explained (%)", "Cumulative (%)"),
-booktabs  = TRUE,
-caption   = "Variance explained by the first five principal components") %>%
-  kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE)
 ```
 
-The scree plot and accompanying table confirm that the predictor set is genuinely multidimensional, with five components required to cross the conventional 80% threshold. No single factor dominates the variance structure, even though strong pairwise collinearity exists among specific subsets of variables as shown in the correlation matrix above.
+The scree plot confirms that the predictor set is genuinely multidimensional, with five components required to cross the conventional 80% threshold. No single factor dominates the variance structure, even though strong pairwise collinearity exists among specific subsets of variables as shown in the correlation matrix above.
 
 ## Stationarity Tests
 
@@ -4316,18 +4323,17 @@ The robustness check conducted in the preceding section validated the production
 
 vars_exo_ara_vs <- c(
   "sugar_price", "cocoa_price", "cpi", "wti", "fed_funds_rate",
-  "dxy", "production_ara", "consumption", "exports",
+  "dxy", "production_ara", "consommation_ara", "exportations_ara",
   "ending_stocks_ara", "indice_precip_arabica", "indice_temp_arabica",
   "oni", "cot_net_mm"
 )
 
 vars_exo_rob_vs <- c(
   "sugar_price", "cocoa_price", "cpi", "wti", "fed_funds_rate",
-  "dxy", "production_rob", "consumption", "exports",
+  "dxy", "production_rob", "consommation_rob", "exportations_rob",
   "ending_stocks_rob", "indice_precip_robusta", "indice_temp_robusta",
   "oni", "cot_net_mm"
 )
-
 
 # ----------------------------------------------------------
 # PREPARE THE VARIETY-SPECIFIC DATASETS
@@ -4664,25 +4670,28 @@ metriques_vs_all %>%
 
 The variety-specific specification yields asymmetric results across the two coffee varieties, revealing an important structural difference in how variety-relevant climate and supply information contributes to predictive accuracy.
 
-**For Robusta**, the variety-specific specification improves out-of-sample performance for three of the six models. ARIMAX gains marginally (+0.008, $R^2$ = 0.937), while Random Forest (+0.026) and XGBoost (+0.053) show more meaningful improvements, with XGBoost in particular reaching $R^2$ = 0.849 under the variety-specific specification, its strongest result across all configurations tested in this study. This confirms the central hypothesis motivating this robustness check: using climate indices and fundamentals restricted to the six Robusta-producing countries provides more relevant supply-side information than the global aggregates, which dilute the Robusta signal by including conditions in countries that produce virtually none. The improvement is most pronounced for the gradient boosting models, which are best placed to exploit the more targeted non-linear relationships between Robusta-specific supply conditions and price dynamics.
+**For Robusta**, the variety-specific specification improves out-of-sample performance for four of the six models. ARIMAX gains marginally (+0.008, $R^2$ = 0.937), while Random Forest (+0.029) and XGBoost (+0.053) show more meaningful improvements, with XGBoost in particular reaching $R^2$ = 0.849 under the variety-specific specification, its strongest result across all configurations tested in this study. This confirms the central hypothesis motivating this robustness check: using climate indices and fundamentals restricted to the six Robusta-producing countries provides more relevant supply-side information than the global aggregates, which dilute the Robusta signal by including conditions in countries that produce virtually none. The improvement is most pronounced for the gradient boosting models, which are best placed to exploit the more targeted non-linear relationships between Robusta-specific supply conditions and price dynamics.
 
-**For Arabica**, the picture is reversed. All six models deteriorate under the variety-specific specification, with ARIMAX losing 0.177 $R^2$ points and ANN producing a negative $R^2$ of −0.413. This result is counterintuitive at first glance but has a structural explanation. The global climate and supply indices used in the baseline specification are in practice already dominated by Arabica-producing countries, as Brazil alone accounts for approximately 39% of world coffee production and approximately 47% of the Arabica-specific weight. Switching to the variety-specific specification therefore changes the indices only marginally for Arabica, while simultaneously reducing the sample of fundamentals and potentially introducing noise from the variety split adjustments applied to mixed producers. The deterioration of ANN in particular reflects the sensitivity of that model to any perturbation of the input variables in the presence of a small training sample.
+**For Arabica**, the picture is reversed. All six models deteriorate under the variety-specific specification, with ARIMAX losing 0.177 $R^2$ points and ANN producing a negative $R^2$ of −0.413. The reasons for this deterioration are discussed in the limitations section.
 
 Taken together, these results suggest that variety-specific predictors are a genuine improvement for Robusta but not for Arabica, where the global specification already captures the relevant producing-country conditions. The XGBoost model under the Robusta variety-specific specification ($R^2$= 0.849) represents the strongest result for that variety across all configurations and specifications estimated in this study.
 
 ## Robustness Check: OECD GDP Growth (Quarterly Specification)
 
-This robustness check addresses a variable suggested during supervision: OECD real GDP growth, a demand-side macroeconomic indicator published only at quarterly frequency, with no monthly equivalent available. Incorporating it therefore requires moving estimation to quarterly frequency rather than approximating it within the monthly pipeline. Because changing frequency and adding a predictor are two distinct changes, three configurations are compared rather than two: the monthly baseline already reported in Section 4.7, a quarterly configuration that aggregates the same 14 baseline predictors without GDP growth, and a quarterly configuration that adds GDP growth as a fifteenth predictor. Comparing the second and third configurations isolates the marginal contribution of GDP growth at a fixed quarterly frequency. All six models are re-estimated using the generic functions already defined for the disaggregated and variety-specific robustness checks above.
+This robustness check addresses a variable suggested during supervision: OECD real GDP growth, a demand-side macroeconomic indicator published only at quarterly frequency, with no monthly equivalent available. Incorporating it therefore requires moving estimation to quarterly frequency rather than approximating it within the monthly pipeline. Because changing frequency and adding a predictor are two distinct changes, three configurations are compared rather than two: the monthly baseline already reported in the comparative performance section, a quarterly configuration that aggregates the same 14 baseline predictors without GDP growth, and a quarterly configuration that adds GDP growth as a fifteenth predictor. Comparing the second and third configurations isolates the marginal contribution of GDP growth at a fixed quarterly frequency. All six models are re-estimated using the generic functions already defined for the preceding robustness checks.
 
-```{r robustness_pib_data, message=FALSE, warning=FALSE}
+*The chunk below reads the OECD quarterly GDP series, aggregates the monthly dataset to quarterly frequency, and builds the two quarterly dataset variants used in the re-estimation below.*
+
+```{r robustness_pib_data, message=FALSE, warning=FALSE, results='hide'}
+
 # ----------------------------------------------------------
 # STEP 1 — READ THE OECD QUARTERLY GDP SERIES
 # Quarter labels are in row 5, growth rates in row 8, both
 # starting at column 3 of the raw OECD export file. The
 # "trimestre" label is renamed to "date" so that the existing
-# preparer_niveaux_vs() function (Section 4.9) can be reused
-# unchanged in the next chunk — it only requires a column
-# called "date" to sort on, regardless of its granularity.
+# preparer_niveaux_vs() function can be reused unchanged in
+# the next chunk — it only requires a column called "date"
+# to sort on, regardless of its granularity.
 # ----------------------------------------------------------
 
 df_pib_raw <- read_excel(FICHIER_PIB, col_names = FALSE)
@@ -4704,11 +4713,10 @@ df_pib <- data.frame(date       = trimestres,
 # each quarter. na.rm = TRUE means a quarter with only one or
 # two valid months (e.g. June 2006 for cot_net_mm, the first
 # month the COT report exists) still produces a non-missing
-# average from the months available — a known simplification
-# inherited from the original quarterly aggregation, not a
-# new issue introduced here. Quarters with zero valid months
-# (e.g. cot_net_mm before mid-2006, prix_robusta before 2008)
-# correctly produce NaN, which is.na() treats as missing.
+# average from the months available. Quarters with zero valid
+# months (e.g. cot_net_mm before mid-2006, robusta_price
+# before 2008) correctly produce NaN, which is.na() treats
+# as missing.
 # ----------------------------------------------------------
 
 dataset_trimestriel_base <- dataset_mensuel %>%
@@ -4729,7 +4737,7 @@ dataset_trimestriel_base <- dataset_mensuel %>%
 # dataset_trimestriel_nogdp: the 14 baseline predictors at
 # quarterly frequency, no GDP — isolates the frequency effect.
 # dataset_trimestriel_gdp: the same base, plus GDP growth —
-# the variant actually of interest in this robustness check.
+# the variant of primary interest in this robustness check.
 # ----------------------------------------------------------
 
 dataset_trimestriel_nogdp <- dataset_trimestriel_base
@@ -4737,14 +4745,17 @@ dataset_trimestriel_nogdp <- dataset_trimestriel_base
 dataset_trimestriel_gdp <- dataset_trimestriel_base %>%
   left_join(df_pib, by = "date")
 
-cat("Quarterly base — rows:", nrow(dataset_trimestriel_base), "\n")
+cat("Quarterly base - rows:", nrow(dataset_trimestriel_base), "\n")
 cat("Quarters with available GDP growth:",
     sum(!is.na(dataset_trimestriel_gdp$pib_growth)), "\n")
 ```
 
 The quarterly base dataset contains 96 rows, matching the expected 288 months divided into 96 quarters with full coverage from 2000-Q1 to 2023-Q4. All 96 quarters have an available GDP growth observation, confirming that the OECD series introduces no additional missing-data constraint beyond those already present in the baseline predictors.
 
-```{r robustness_pib_split, message=FALSE, warning=FALSE}
+*The chunk below defines the variable lists for the two quarterly variants, prepares the four datasets (two series × two specifications), and computes the 80/20 train/test split indices used in the re-estimation below.*
+
+```{r robustness_pib_split, message=FALSE, warning=FALSE, results='hide'}
+
 # ----------------------------------------------------------
 # STEP 4 — VARIABLE LISTS FOR THE TWO VARIANTS
 # The "no GDP" variant reuses the global vars_exo list (14
@@ -4757,24 +4768,25 @@ vars_exo_pib <- c(vars_exo, "pib_growth")
 
 # ----------------------------------------------------------
 # STEP 5 — PREPARE THE FOUR QUARTERLY DATASETS
-# preparer_niveaux_vs() is reused unchanged from Section 4.9 —
-# it only requires a "date" column to sort on and a
-# vars_exo_vec argument, both satisfied here.
+# preparer_niveaux_vs() is reused unchanged from the
+# variety-specific robustness check — it only requires a
+# "date" column to sort on and a vars_exo_vec argument,
+# both satisfied here.
 # ----------------------------------------------------------
 
 df_arabica_trim_nogdp <- preparer_niveaux_vs(
-  dataset_trimestriel_nogdp, "prix_arabica", vars_exo)
+  dataset_trimestriel_nogdp, "arabica_price", vars_exo)
 
 df_robusta_trim_nogdp <- preparer_niveaux_vs(
-  dataset_trimestriel_nogdp %>% filter(!is.na(prix_robusta)),
-  "prix_robusta", vars_exo)
+  dataset_trimestriel_nogdp %>% filter(!is.na(robusta_price)),
+  "robusta_price", vars_exo)
 
 df_arabica_trim_gdp <- preparer_niveaux_vs(
-  dataset_trimestriel_gdp, "prix_arabica", vars_exo_pib)
+  dataset_trimestriel_gdp, "arabica_price", vars_exo_pib)
 
 df_robusta_trim_gdp <- preparer_niveaux_vs(
-  dataset_trimestriel_gdp %>% filter(!is.na(prix_robusta)),
-  "prix_robusta", vars_exo_pib)
+  dataset_trimestriel_gdp %>% filter(!is.na(robusta_price)),
+  "robusta_price", vars_exo_pib)
 
 
 # ----------------------------------------------------------
@@ -4786,119 +4798,126 @@ n_train_rob_trim_nogdp <- floor(nrow(df_robusta_trim_nogdp) * split_ratio)
 n_train_ara_trim_gdp   <- floor(nrow(df_arabica_trim_gdp)   * split_ratio)
 n_train_rob_trim_gdp   <- floor(nrow(df_robusta_trim_gdp)   * split_ratio)
 
-cat("Arabica quarterly, no GDP   — Train:", n_train_ara_trim_nogdp,
+cat("Arabica quarterly, no GDP   - Train:", n_train_ara_trim_nogdp,
     "| Test:", nrow(df_arabica_trim_nogdp) - n_train_ara_trim_nogdp, "\n")
-cat("Robusta quarterly, no GDP   — Train:", n_train_rob_trim_nogdp,
+cat("Robusta quarterly, no GDP   - Train:", n_train_rob_trim_nogdp,
     "| Test:", nrow(df_robusta_trim_nogdp) - n_train_rob_trim_nogdp, "\n")
-cat("Arabica quarterly, with GDP — Train:", n_train_ara_trim_gdp,
+cat("Arabica quarterly, with GDP - Train:", n_train_ara_trim_gdp,
     "| Test:", nrow(df_arabica_trim_gdp) - n_train_ara_trim_gdp, "\n")
-cat("Robusta quarterly, with GDP — Train:", n_train_rob_trim_gdp,
+cat("Robusta quarterly, with GDP - Train:", n_train_rob_trim_gdp,
     "| Test:", nrow(df_robusta_trim_gdp) - n_train_rob_trim_gdp, "\n")
 ```
 
-The resulting training and test sizes are 56 and 15 quarters for Arabica and 51 and 13 quarters for Robusta, identical across the two variants since GDP growth does not remove any additional observation. The Arabica sample is constrained by the COT report, available only from June 2006, while the Robusta sample is constrained by its own data availability from 2008 onward — the same binding constraints as in the monthly specification, simply expressed in quarters rather than months. All six models are re-estimated using the generic functions already defined in Sections 4.8 and 4.9 (`fit_arimax_generique`, `fit_mlr_generique`, `fit_rf_generique`, `fit_xgb_generique`, `fit_svm_generique`, `fit_ann_generique`), called here with the quarterly datasets and either the baseline `vars_exo` list or the extended `vars_exo_pib` list.
+The resulting training and test sizes are 56 and 15 quarters for Arabica and 51 and 13 quarters for Robusta, identical across the two variants since GDP growth does not remove any additional observation. The Arabica sample is constrained by the COT report, available only from June 2006, while the Robusta sample is constrained by its own data availability from 2008 onward, the same binding constraints as in the monthly specification, simply expressed in quarters rather than months. All six models are re-estimated using the generic functions already defined in the preceding robustness checks (`fit_arimax_generique`, `fit_mlr_generique`, `fit_rf_generique`, `fit_xgb_generique`, `fit_svm_generique`, `fit_ann_generique`), called here with the quarterly datasets and either the baseline `vars_exo` list or the extended `vars_exo_pib` list.
 
-```{r, robustness_pib_models, message=FALSE, warning=FALSE, results='hide'}
+*The chunk below re-estimates all six models under both quarterly variants and stacks the performance metrics into two data frames for comparison in the table chunk that follows.*
+
+```{r robustness_pib_models, message=FALSE, warning=FALSE, results='hide'}
+
 # ----------------------------------------------------------
 # STEP 7 — RUN ALL SIX MODELS, BOTH SERIES, BOTH VARIANTS
-# Reuses the six generic functions defined in Sections 4.8
-# and 4.9 (fit_arimax_generique, fit_mlr_generique,
-# fit_rf_generique, fit_xgb_generique, fit_svm_generique,
-# fit_ann_generique) without modification.
+# The six generic functions defined in the preceding
+# robustness checks are reused without modification, called
+# here with the quarterly datasets and either the baseline
+# vars_exo list or the extended vars_exo_pib list.
 # ----------------------------------------------------------
 
 # --- NO GDP VARIANT ---
 
-cat("Running quarterly ARIMAX (no GDP) — Arabica...\n")
+cat("Running quarterly ARIMAX (no GDP) - Arabica...\n")
 res_arimax_ara_trim_nogdp <- fit_arimax_generique(
-  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
-cat("Running quarterly ARIMAX (no GDP) — Robusta...\n")
+  df_arabica_trim_nogdp, "arabica_price", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly ARIMAX (no GDP) - Robusta...\n")
 res_arimax_rob_trim_nogdp <- fit_arimax_generique(
-  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+  df_robusta_trim_nogdp, "robusta_price", vars_exo, n_train_rob_trim_nogdp)
 
-cat("Running quarterly MLR (no GDP) — Arabica...\n")
+cat("Running quarterly MLR (no GDP) - Arabica...\n")
 res_mlr_ara_trim_nogdp <- fit_mlr_generique(
-  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
-cat("Running quarterly MLR (no GDP) — Robusta...\n")
+  df_arabica_trim_nogdp, "arabica_price", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly MLR (no GDP) - Robusta...\n")
 res_mlr_rob_trim_nogdp <- fit_mlr_generique(
-  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+  df_robusta_trim_nogdp, "robusta_price", vars_exo, n_train_rob_trim_nogdp)
 
-cat("Running quarterly RF (no GDP) — Arabica...\n")
+cat("Running quarterly RF (no GDP) - Arabica...\n")
 res_rf_ara_trim_nogdp <- fit_rf_generique(
-  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
-cat("Running quarterly RF (no GDP) — Robusta...\n")
+  df_arabica_trim_nogdp, "arabica_price", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly RF (no GDP) - Robusta...\n")
 res_rf_rob_trim_nogdp <- fit_rf_generique(
-  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+  df_robusta_trim_nogdp, "robusta_price", vars_exo, n_train_rob_trim_nogdp)
 
-cat("Running quarterly XGBoost (no GDP) — Arabica...\n")
+cat("Running quarterly XGBoost (no GDP) - Arabica...\n")
 res_xgb_ara_trim_nogdp <- fit_xgb_generique(
-  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
-cat("Running quarterly XGBoost (no GDP) — Robusta...\n")
+  df_arabica_trim_nogdp, "arabica_price", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly XGBoost (no GDP) - Robusta...\n")
 res_xgb_rob_trim_nogdp <- fit_xgb_generique(
-  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+  df_robusta_trim_nogdp, "robusta_price", vars_exo, n_train_rob_trim_nogdp)
 
-cat("Running quarterly SVM (no GDP) — Arabica...\n")
+cat("Running quarterly SVM (no GDP) - Arabica...\n")
 res_svm_ara_trim_nogdp <- fit_svm_generique(
-  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
-cat("Running quarterly SVM (no GDP) — Robusta...\n")
+  df_arabica_trim_nogdp, "arabica_price", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly SVM (no GDP) - Robusta...\n")
 res_svm_rob_trim_nogdp <- fit_svm_generique(
-  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+  df_robusta_trim_nogdp, "robusta_price", vars_exo, n_train_rob_trim_nogdp)
 
-cat("Running quarterly ANN (no GDP) — Arabica...\n")
+cat("Running quarterly ANN (no GDP) - Arabica...\n")
 res_ann_ara_trim_nogdp <- fit_ann_generique(
-  df_arabica_trim_nogdp, "prix_arabica", vars_exo, n_train_ara_trim_nogdp)
-cat("Running quarterly ANN (no GDP) — Robusta...\n")
+  df_arabica_trim_nogdp, "arabica_price", vars_exo, n_train_ara_trim_nogdp)
+cat("Running quarterly ANN (no GDP) - Robusta...\n")
 res_ann_rob_trim_nogdp <- fit_ann_generique(
-  df_robusta_trim_nogdp, "prix_robusta", vars_exo, n_train_rob_trim_nogdp)
+  df_robusta_trim_nogdp, "robusta_price", vars_exo, n_train_rob_trim_nogdp)
 
 
 # --- WITH GDP VARIANT ---
 
-cat("Running quarterly ARIMAX (with GDP) — Arabica...\n")
+cat("Running quarterly ARIMAX (with GDP) - Arabica...\n")
 res_arimax_ara_trim_gdp <- fit_arimax_generique(
-  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
-cat("Running quarterly ARIMAX (with GDP) — Robusta...\n")
+  df_arabica_trim_gdp, "arabica_price", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly ARIMAX (with GDP) - Robusta...\n")
 res_arimax_rob_trim_gdp <- fit_arimax_generique(
-  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+  df_robusta_trim_gdp, "robusta_price", vars_exo_pib, n_train_rob_trim_gdp)
 
-cat("Running quarterly MLR (with GDP) — Arabica...\n")
+cat("Running quarterly MLR (with GDP) - Arabica...\n")
 res_mlr_ara_trim_gdp <- fit_mlr_generique(
-  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
-cat("Running quarterly MLR (with GDP) — Robusta...\n")
+  df_arabica_trim_gdp, "arabica_price", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly MLR (with GDP) - Robusta...\n")
 res_mlr_rob_trim_gdp <- fit_mlr_generique(
-  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+  df_robusta_trim_gdp, "robusta_price", vars_exo_pib, n_train_rob_trim_gdp)
 
-cat("Running quarterly RF (with GDP) — Arabica...\n")
+cat("Running quarterly RF (with GDP) - Arabica...\n")
 res_rf_ara_trim_gdp <- fit_rf_generique(
-  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
-cat("Running quarterly RF (with GDP) — Robusta...\n")
+  df_arabica_trim_gdp, "arabica_price", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly RF (with GDP) - Robusta...\n")
 res_rf_rob_trim_gdp <- fit_rf_generique(
-  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+  df_robusta_trim_gdp, "robusta_price", vars_exo_pib, n_train_rob_trim_gdp)
 
-cat("Running quarterly XGBoost (with GDP) — Arabica...\n")
+cat("Running quarterly XGBoost (with GDP) - Arabica...\n")
 res_xgb_ara_trim_gdp <- fit_xgb_generique(
-  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
-cat("Running quarterly XGBoost (with GDP) — Robusta...\n")
+  df_arabica_trim_gdp, "arabica_price", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly XGBoost (with GDP) - Robusta...\n")
 res_xgb_rob_trim_gdp <- fit_xgb_generique(
-  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+  df_robusta_trim_gdp, "robusta_price", vars_exo_pib, n_train_rob_trim_gdp)
 
-cat("Running quarterly SVM (with GDP) — Arabica...\n")
+cat("Running quarterly SVM (with GDP) - Arabica...\n")
 res_svm_ara_trim_gdp <- fit_svm_generique(
-  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
-cat("Running quarterly SVM (with GDP) — Robusta...\n")
+  df_arabica_trim_gdp, "arabica_price", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly SVM (with GDP) - Robusta...\n")
 res_svm_rob_trim_gdp <- fit_svm_generique(
-  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+  df_robusta_trim_gdp, "robusta_price", vars_exo_pib, n_train_rob_trim_gdp)
 
-cat("Running quarterly ANN (with GDP) — Arabica...\n")
+cat("Running quarterly ANN (with GDP) - Arabica...\n")
 res_ann_ara_trim_gdp <- fit_ann_generique(
-  df_arabica_trim_gdp, "prix_arabica", vars_exo_pib, n_train_ara_trim_gdp)
-cat("Running quarterly ANN (with GDP) — Robusta...\n")
+  df_arabica_trim_gdp, "arabica_price", vars_exo_pib, n_train_ara_trim_gdp)
+cat("Running quarterly ANN (with GDP) - Robusta...\n")
 res_ann_rob_trim_gdp <- fit_ann_generique(
-  df_robusta_trim_gdp, "prix_robusta", vars_exo_pib, n_train_rob_trim_gdp)
+  df_robusta_trim_gdp, "robusta_price", vars_exo_pib, n_train_rob_trim_gdp)
 
 
 # ----------------------------------------------------------
-# STEP 8 — STACK METRICS, ONE TABLE PER VARIANT
+# STEP 8 — STACK METRICS, ONE DATA FRAME PER VARIANT
+# calculer_metriques() is applied to each model's actual and
+# predicted vectors. Results are stacked into two 12-row
+# data frames, one per variant, for comparison in the
+# table chunk that follows.
 # ----------------------------------------------------------
 
 metriques_trim_nogdp_all <- rbind(
@@ -4958,12 +4977,16 @@ metriques_trim_gdp_all <- rbind(
   mutate(across(c(R2, MSE, MAE), as.numeric))
 ```
 
+*The chunk below builds the three-way comparison table and bar chart. The baseline $R^2$ is pulled directly from `metriques_all` rather than hard-coded, so the table always reflects the value produced by the most recent run.*
+
 ```{r robustness_pib_table, message=FALSE, warning=FALSE}
+
 # ----------------------------------------------------------
 # STEP 9 — COMPARISON TABLE: MONTHLY VS QUARTERLY (NO GDP / GDP)
-# Baseline R² is pulled directly from metriques_all (Section
-# 4.7), never hard-coded, so the table always reflects the
-# value actually produced by the most recent run.
+# Baseline R² is pulled directly from metriques_all, never
+# hard-coded, so the table always reflects the value actually
+# produced by the most recent run. Delta_GDP isolates the
+# marginal contribution of GDP growth at quarterly frequency.
 # ----------------------------------------------------------
 
 df_robustness_pib <- metriques_all %>%
@@ -4989,63 +5012,46 @@ df_robustness_pib <- metriques_all %>%
     R2_trim_gdp   = round(R2_trim_gdp, 4)
   )
 
-kable(df_robustness_pib %>% filter(Series == "Arabica") %>% select(-Series),
-      caption  = paste0("Monthly baseline vs quarterly specifications, ",
-                        "without and with GDP growth — Arabica (out-of-sample R²)"),
-      booktabs = TRUE,
-      col.names = c("Model", "R² (monthly)", "R² (quarterly, no GDP)",
-                    "R² (quarterly, with GDP)", "ΔR² (GDP effect)")) %>%
+
+# ----------------------------------------------------------
+# STEP 10 — SINGLE COMPARISON TABLE WITH pack_rows()
+# Models are sorted by decreasing monthly baseline R² within
+# each series. pack_rows() adds colour-coded group headers
+# for Arabica and Robusta, consistent with the rest of the
+# document. The Delta_GDP column is coloured green for
+# positive values and red for negative values.
+# ----------------------------------------------------------
+
+df_robustness_pib %>%
+  arrange(Series, desc(R2_mensuel)) %>%
+  select(-Series) %>%
+  kable(caption   = "Monthly baseline vs quarterly specifications, without and with GDP growth (out-of-sample R²)",
+        booktabs  = TRUE,
+        col.names = c("Model", "R² (monthly)", "R² (quarterly, no GDP)",
+                      "R² (quarterly, with GDP)", "ΔR² (GDP effect)")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = FALSE) %>%
+  row_spec(6, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 6,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 7, 12,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec") %>%
   column_spec(5, color = ifelse(
-    df_robustness_pib %>% filter(Series == "Arabica") %>% pull(Delta_GDP) > 0,
+    df_robustness_pib %>%
+      arrange(Series, desc(R2_mensuel)) %>%
+      pull(Delta_GDP) > 0,
     "darkgreen", "red"))
-
-kable(df_robustness_pib %>% filter(Series == "Robusta") %>% select(-Series),
-      caption  = paste0("Monthly baseline vs quarterly specifications, ",
-                        "without and with GDP growth — Robusta (out-of-sample R²)"),
-      booktabs = TRUE,
-      col.names = c("Model", "R² (monthly)", "R² (quarterly, no GDP)",
-                    "R² (quarterly, with GDP)", "ΔR² (GDP effect)")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE) %>%
-  column_spec(5, color = ifelse(
-    df_robustness_pib %>% filter(Series == "Robusta") %>% pull(Delta_GDP) > 0,
-    "darkgreen", "red"))
-
-# Bar chart — three configurations side by side
-metriques_trim_gdp_all %>%
-  mutate(Specification = "Quarterly, with GDP") %>%
-  bind_rows(
-    metriques_trim_nogdp_all %>%
-      mutate(Specification = "Quarterly, no GDP")
-  ) %>%
-  bind_rows(
-    metriques_all %>%
-      mutate(across(c(R2, MSE, MAE), as.numeric),
-             Specification = "Monthly baseline")
-  ) %>%
-  mutate(Specification = factor(Specification,
-                                levels = c("Monthly baseline",
-                                          "Quarterly, no GDP",
-                                          "Quarterly, with GDP"))) %>%
-  ggplot(aes(x = Model, y = R2, fill = Specification)) +
-  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
-  scale_fill_manual(values = c("Monthly baseline"     = "#95A5A6",
-                               "Quarterly, no GDP"    = "#5B8FB9",
-                               "Quarterly, with GDP"  = "#2E5090")) +
-  facet_wrap(~ Series, ncol = 2) +
-  labs(title = "Monthly baseline vs quarterly specifications — out-of-sample R²",
-       x = NULL, y = expression(R^2), fill = NULL) +
-  theme_minimal(base_size = 11) +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1))
 ```
 
-The comparison across the three configurations isolates two distinct effects: moving from monthly to quarterly frequency, and adding GDP growth as a predictor once frequency is held fixed. The frequency effect dominates. For Arabica, the two econometric benchmarks tolerate the change reasonably well, with ARIMAX falling only marginally from 0.8209 to 0.8149 and MLR even improving slightly to 0.8201, while the four machine learning models deteriorate substantially, most severely ANN, which collapses from 0.4529 to -0.9511. For Robusta, the deterioration is broader and affects every model: ARIMAX, the strongest performer in the monthly baseline at 0.9291, drops to 0.5519 at quarterly frequency, and MLR turns negative at -0.0544. The most plausible explanation is sample size. The quarterly training window covers only 56 observations for Arabica and 51 for Robusta, against 168 and 153 at monthly frequency, a reduction that disproportionately penalises the more data-hungry machine learning models, in particular ANN and SVM.
+The comparison across the three configurations isolates two distinct effects: moving from monthly to quarterly frequency, and adding GDP growth as a predictor once frequency is held fixed. The frequency effect dominates. For Arabica, the two econometric benchmarks tolerate the change reasonably well, with ARIMAX falling only marginally from 0.821 to 0.815 and MLR even improving slightly to 0.820, while the four machine learning models deteriorate substantially, most severely ANN, which collapses from 0.453 to −0.951. For Robusta, the deterioration is broader and affects every model: ARIMAX, the strongest performer in the monthly baseline at 0.929, drops to 0.552 at quarterly frequency, and MLR turns negative at −0.054. The most plausible explanation is sample size. The quarterly training window covers only 56 observations for Arabica and 51 for Robusta, against 168 and 153 at monthly frequency, a reduction that disproportionately penalises the more data-hungry machine learning models, in particular ANN and SVM.
 
-Once frequency is held fixed, the addition of GDP growth produces no consistent improvement. For Arabica, all six models deteriorate further, in two cases substantially: SVM loses 0.1231 of R² and ANN, already negative, falls another 0.7998 to -1.7509. For Robusta, the picture is mixed but the gains are small relative to the losses. ARIMAX, MLR and XGBoost improve marginally, by between 0.003 and 0.008 points, Random Forest deteriorates marginally, and SVM loses more than a fifth of its R² at -0.2237. The one substantial gain, ANN at +0.2013, starts from a negative baseline and still leaves the model only modestly above zero. Taken together, these results provide no support for including GDP growth as a predictor. Its marginal contribution is small, inconsistently signed across models and series, and dwarfed by the cost of moving to quarterly frequency in the first place.
+Once frequency is held fixed, the addition of GDP growth produces no consistent improvement. For Arabica, five of the six models deteriorate further, in two cases substantially: SVM loses 0.123 of $R^2$ and ANN, already negative, falls another 0.800 to −1.751. For Robusta, the picture is mixed but the gains are small relative to the losses. ARIMAX, MLR and XGBoost improve marginally, by between 0.002 and 0.009 points, Random Forest deteriorates marginally, and SVM loses more than a fifth of its $R^2$ at −0.224. The one substantial gain, ANN at +0.201, starts from a negative baseline and still leaves the model only modestly above zero.
 
-This negative result is consistent with the variable's underlying economic content. Once CPI, the Federal Funds Rate, world consumption and the dollar index are already included as predictors, OECD GDP growth, a slow-moving and backward-looking aggregate of high-income country output, carries little additional demand-side information at the frequency relevant for coffee futures pricing. The result should also be read against the constraint that motivated this robustness check in the first place. GDP growth has no monthly equivalent, so testing its contribution necessarily means testing it jointly with a frequency change that, on its own, already degrades out-of-sample performance for most models. A genuinely monthly test of the variable's marginal contribution is therefore not feasible with the data available.
+Taken together, these results provide no support for including GDP growth as a predictor. Its marginal contribution is small, inconsistently signed across models and series, and dwarfed by the cost of moving to quarterly frequency in the first place.
 
 # Discussion
 
@@ -5053,106 +5059,103 @@ This negative result is consistent with the variable's underlying economic conte
 
 ### Overall Model Performance
 
-The out-of-sample results presented in the previous section paint a consistent and interpretable picture of predictive performance across the six model families. Two broad conclusions emerge. First, models that explicitly account for the temporal dynamics of price series — either through autoregressive components (ARIMAX) or through gradient boosting on trending levels (XGBoost) — systematically outperform static linear specifications. Second, the gap between the best and worst performers is substantially larger for Robusta than for Arabica, reflecting the more volatile and structurally challenging nature of the Robusta test period.
+The out-of-sample results present a consistent and interpretable picture of predictive performance across the six model families. Two broad conclusions emerge. First, models that explicitly account for the temporal dynamics of price series, whether through autoregressive components as in ARIMAX or through gradient boosting on trending levels as in XGBoost, systematically outperform static linear specifications. Second, the performance gap between the strongest and weakest models is substantially wider for Robusta than for Arabica, reflecting the more volatile and structurally demanding nature of the Robusta test period.
 
-For Arabica, ARIMAX and XGBoost achieve near-identical $R^2$ values of 0.821 and 0.818 respectively, confirming that the autoregressive structure of price dynamics carries predictive information that neither purely cross-sectional nor purely tree-based specifications can fully replicate. The forecast trajectory plots show that both models track the broad price level and direction correctly throughout the 2021–2024 test period, including the gradual decline from the 2022 peak, though both exhibit the typical one-step-ahead lag at turning points. Random Forest follows closely at $R^2$ = 0.807, while MLR achieves a solid $R^2$ = 0.784 — a result that reflects the strong trending co-movement between Arabica prices and the macroeconomic variables in levels, rather than genuine causal predictive power. The ANN and SVM trail at 0.453 and 0.696 respectively, for reasons discussed in the limitations section.
+For Arabica, ARIMAX and XGBoost achieve near-identical $R^2$ values of 0.821 and 0.818 respectively, confirming that the autoregressive structure of price dynamics carries predictive information that neither purely cross-sectional nor purely tree-based specifications can fully replicate. The forecast trajectory plots show that both models track the broad price level and direction correctly throughout the 2021–2024 test period, including the gradual rise through 2022 and the subsequent decline, though both exhibit the typical one-step-ahead lag at turning points. Random Forest follows closely at $R^2$ = 0.811 and SVM at 0.813 following hyperparameter tuning, while MLR achieves $R^2$ = 0.784, a result that reflects the strong trending co-movement between Arabica prices and the macroeconomic variables in levels rather than genuine structural predictive power. The ANN trails at 0.453 for reasons discussed in the limitations section.
 
-For Robusta, the performance hierarchy shifts markedly. ARIMAX delivers the strongest result of the baseline specification with $R^2$ = 0.929, driven by the strongly persistent autoregressive structure of Robusta prices over the 2021–2024 test period — a period characterised by a near-monotonic upward trend that an AR model with high persistence coefficient naturally tracks well. XGBoost follows at $R^2$ = 0.796, while Random Forest and ANN achieve 0.692 and 0.668 respectively. The most striking result is the collapse of MLR to $R^2$ = 0.276, with forecast trajectories that oscillate erratically around the observed series and produce large directional errors. This failure reflects the well-documented sensitivity of OLS to multicollinearity in short samples: with only 153 training observations and 14 highly collinear predictors — as documented in the PCA analysis where Production, Consumption and Exports load almost identically on the first principal component — the coefficient estimates are unstable and the model cannot generalise to the test period. This result underscores the importance of temporal dynamics in commodity price modelling and confirms that a static linear specification is insufficient for Robusta price prediction over the available sample.
+For Robusta, the performance hierarchy shifts markedly. ARIMAX delivers the strongest result under the baseline specification with $R^2$ = 0.929, driven by the strongly persistent autoregressive structure of Robusta prices over the test period, which was characterised by a near-monotonic upward trend that a high-persistence AR model naturally tracks well. XGBoost follows at $R^2$ = 0.796, while SVM and Random Forest achieve 0.723 and 0.695 respectively. The most striking result is the collapse of MLR to $R^2$ = 0.276, with forecast trajectories that oscillate erratically around the observed series and produce large directional errors. This failure reflects the well-known sensitivity of OLS to multicollinearity in short samples: with only 153 training observations and 14 highly collinear predictors, as documented in the correlation and PCA analyses, coefficient estimates become unstable and the model cannot generalise to the test period. This result underscores the importance of temporal dynamics in commodity price modelling and confirms that a static linear specification is insufficient for Robusta price prediction over the available sample.
 
-The coefficient tables further illuminate the challenge of estimating interpretable linear relationships in this predictor space. For both varieties, only a small number of regressors reach conventional significance thresholds on the full training set — Sugar and WTI for Arabica, CPI, WTI and COT net MM for Robusta. This outcome is not a failure of the model specification but a direct consequence of the severe multicollinearity documented in the PCA analysis, where Production, Consumption and Exports load almost identically on the first principal component. In the presence of such collinearity, OLS distributes explanatory power across correlated regressors in an unstable way, inflating standard errors and suppressing individual t-statistics even when the collective predictive content of the variable group is substantial. This observation provides a retrospective justification for the machine learning approach adopted in this study: Random Forest and XGBoost are specifically designed to exploit the predictive information contained in groups of correlated variables through non-linear combinations and variable selection mechanisms that are unavailable to the linear ARIMAX regression component.
+The coefficient tables from the ARIMAX training-set estimation further illuminate the challenge of identifying interpretable linear relationships in this predictor space. For both varieties, only a small number of regressors reach conventional significance thresholds: Sugar and WTI for Arabica, CPI, WTI and COT net MM for Robusta. This outcome is not a failure of specification but a direct consequence of the severe multicollinearity documented in the correlation and PCA analyses, where Production, Consumption and Exports load almost identically on the first principal component. In the presence of such collinearity, OLS distributes explanatory power across correlated regressors in an unstable way, inflating standard errors and suppressing individual t-statistics even when the collective predictive content of the variable group is substantial. This observation provides a retrospective justification for the machine learning approach adopted in this study: Random Forest and XGBoost are specifically designed to exploit the predictive information contained in groups of correlated variables through non-linear combinations and variable selection mechanisms that are unavailable to the linear regression component of ARIMAX.
 
-The overall level of predictive accuracy achieved — with $R^2$ values generally above 0.75 across the best-performing models for both varieties — is worth noting in context: these results are obtained on series in levels, and the co-trending of prices with macroeconomic variables may inflate $R^2$ beyond what would be achievable on stationary first-differenced series. This point is addressed explicitly in the limitations section.
+The overall level of predictive accuracy achieved, with $R^2$ values generally above 0.75 across the best-performing models for both varieties, is worth noting in context. These results are obtained on series in levels, and the co-trending of prices with macroeconomic variables may inflate $R^2$ beyond what would be achievable on stationary first-differenced series. This point is addressed explicitly in the limitations section.
 
 ### The Role of Financial and Speculative Variables
 
-The variable importance analysis from the Random Forest model provides the clearest picture of which predictors drive out-of-sample accuracy. For Arabica, the COT net Managed Money position and Sugar No.11 prices emerge as the two dominant predictors, each contributing approximately 25% increase in MSE when permuted — a margin substantially above all other variables. This result is consistent with the progressive entry of speculative investors into commodity futures markets since the early 2000s, which has increased the co-movement between commodity prices and financial variables. The Coffee C contract on ICE Futures U.S. is among the most actively traded agricultural futures contracts, and the positioning of Managed Money participants — who hold positions purely for speculative or investment purposes — reflects market sentiment about future price direction. The strong predictive power of COT net MM suggests that this sentiment signal is not fully incorporated into contemporaneous prices and therefore carries genuine forecasting value at the one-month-ahead horizon.
+The variable importance analysis from the Random Forest model provides the clearest picture of which predictors drive out-of-sample accuracy. For Arabica, Sugar No.11 prices and the COT net Managed Money position emerge as the two dominant predictors, contributing approximately 27% and 24% increase in MSE respectively when permuted, well above all other variables. The dominance of speculative positioning reflects the progressive financialisation of the Arabica market: the Coffee C contract on ICE Futures U.S. is among the most actively traded agricultural futures contracts, and the net position of Managed Money participants captures market-wide expectations about future price direction that are not yet reflected in contemporaneous fundamentals. The strong predictive power of COT net MM at the one-month-ahead horizon suggests that this sentiment signal is not fully incorporated into current prices, creating a forecasting opportunity that the Random Forest exploits through its non-linear variable interactions.
 
-The prominence of Sugar No.11 prices in the Arabica importance ranking reflects the well-documented land substitution dynamic between coffee and sugar in Brazil. When sugar prices rise relative to coffee prices, Brazilian farmers have an incentive to reallocate land and resources toward sugar production, reducing coffee supply in subsequent crop years. At monthly frequency, this substitution effect is not yet visible in realised production figures — which are published annually by the USDA — but it is anticipated by market participants and therefore reflected in futures prices, creating a contemporaneous co-movement that the Random Forest exploits.
+The prominence of Sugar No.11 prices in the Arabica ranking reflects the supply-side linkage between the two commodities in Brazil, the world's largest producer of both. When sugar prices rise relative to coffee prices, the relative return to sugar cultivation increases, creating an incentive for land reallocation that is anticipated by market participants and reflected in coffee futures prices before it appears in realised production data. At monthly frequency, this anticipatory co-movement is directly exploitable by the model.
 
-For Robusta, WTI and CPI displace COT net MM and Sugar as the top two predictors. The stronger role of energy costs for Robusta is consistent with the production geography of this variety: Vietnam and Indonesia, which together account for approximately 45% of world Robusta production, are major energy importers whose production and export logistics are more directly tied to global oil prices than the more diversified Brazilian Arabica supply chain. The prominence of CPI reflects the fact that Robusta is primarily consumed in price-sensitive market segments — soluble coffee and value blends — where demand is more elastic to the general price level than premium Arabica.
+For Robusta, the importance hierarchy differs markedly in its upper ranks. WTI and CPI are the two dominant predictors, contributing approximately 25% and 22% increase in MSE respectively, displacing the financial and market-specific variables that led the Arabica ranking. The stronger role of energy costs for Robusta is consistent with the production geography of this variety: Vietnam and Indonesia, which together account for approximately 45% of world Robusta production, are major energy importers whose production and export logistics are more sensitive to global oil prices than the more diversified Brazilian Arabica supply chain. The prominence of CPI reflects the fact that Robusta is primarily consumed in price-sensitive market segments, including soluble coffee and value blends, where demand responds more elastically to the general price level than in the premium Arabica segment.
 
-### Climate Variables and Their Limited Monthly-Frequency Impact
+Across both varieties, financial and macroeconomic variables systematically outrank supply-side fundamentals and climate variables in terms of predictive contribution at monthly frequency. This finding carries a practical implication: short-run price signals for coffee are more reliably extracted from financial positioning data and macroeconomic indicators than from production and inventory statistics, which are published at annual frequency and carry substantial measurement uncertainty.
 
-A consistent finding across both varieties is the relatively low variable importance of the climate indices — Precipitation, Temperature and ONI — compared to financial and macroeconomic predictors. For Arabica, Temperature and Precipitation rank last among all 14 predictors, each contributing less than 4% increase in MSE when permuted. For Robusta, the climate variables rank somewhat higher but remain well below the financial and macro variables.
+### Climate Variables and the Lag Structure Problem
 
-This result should not be interpreted as evidence that climate is irrelevant to coffee prices. Rather, it reflects a fundamental mismatch between the frequency of the model and the lag structure through which climate affects prices. Coffee cherry development, flowering and yield are influenced by temperature and precipitation conditions during the growing season, which typically spans six to twelve months before harvest. A climate shock in month $t$ affects production in month $t+6$ to $t+12$, which in turn affects prices at a further lag as supply shortfalls propagate through inventories and trade flows. At monthly frequency, a contemporaneous model cannot capture this lagged transmission channel, and the climate signal is therefore largely absorbed by the production and ending stocks variables that already reflect the cumulative impact of past weather conditions on realised supply. The anomaly heatmaps presented in the data section confirm that significant climate episodes — such as the Brazilian drought of 2021 or the La Niña-driven excess rainfall in Colombia in 2010–2011 — are clearly visible in the disaggregated data, but their translation into price effects operates through supply channels with lags that exceed the one-month forecasting horizon of this study.
+A consistent finding across both varieties is the relatively low variable importance of the climate indices compared to financial and macroeconomic predictors. For Arabica, Precipitation and Temperature rank last among all 14 predictors, each contributing approximately 3% and 6% increase in MSE respectively when permuted. For Robusta, the climate variables rank somewhat higher at approximately 6% and 8%, but remain well below the dominant financial and macro variables.
 
-The ONI index, which captures ENSO conditions, ranks somewhat higher than the national climate indices for both varieties — approximately 16% increase in MSE for Arabica and 15% for Robusta. This relatively higher importance reflects the fact that ENSO episodes affect prices not only through supply but also through expectation formation: market participants anticipate the supply consequences of El Niño and La Niña episodes before they materialise in realised production, creating a contemporaneous price effect that a monthly model can capture. This expectational channel is absent for the national climate indices, which measure realised conditions rather than forecast anomalies.
+This result should not be interpreted as evidence that climate is irrelevant to coffee prices. Rather, it reflects a fundamental mismatch between the one-step-ahead monthly forecasting horizon of the models and the lag structure through which climate affects prices. Coffee cherry development, flowering and yield are influenced by temperature and precipitation conditions during the growing season, which typically spans six to twelve months before harvest. A climate shock in month $t$ affects production in month $t+6$ to $t+12$, which in turn affects prices at a further lag as supply shortfalls propagate through inventories and trade flows. A contemporaneous monthly model cannot capture this transmission channel directly, and the climate signal is therefore largely absorbed by the production and ending stocks variables that already reflect the cumulative impact of past weather conditions on realised supply.
 
-### Arabica vs Robusta — Structural Differences
+The ONI index, which captures ENSO conditions, ranks somewhat higher than the national climate indices for both varieties, contributing approximately 17% increase in MSE for Arabica and 16% for Robusta. This relatively stronger importance likely reflects the fact that ENSO episodes affect prices not only through realised supply but also through expectation formation: market participants anticipate the supply consequences of El Niño and La Niña episodes before they materialise in production data, creating a contemporaneous price effect that a monthly model can capture. This expectational channel is absent from the national temperature and precipitation indices, which measure realised meteorological conditions rather than forward-looking anomaly signals.
 
-The contrast between Arabica and Robusta results across models reveals important structural differences between the two markets that go beyond the shorter sample available for Robusta.
+The implication for future model design is clear. Incorporating lagged climate variables at horizons of three, six and twelve months would allow the model to capture the delayed transmission from weather conditions to coffee prices through the production and inventory channel.
 
-The dominance of ARIMAX on Robusta ($R^2$ = 0.929 vs 0.821 for Arabica) reflects the stronger autoregressive persistence of Robusta prices over the test period. The selected $ARIMA(3,0,1)$ error structure for Robusta — compared to $ARIMA(1,0,0)$ for Arabica — indicates that Robusta price dynamics involve more complex short-run autocorrelation patterns, which ARIMAX captures through its MA component in addition to the AR terms. The near-monotonic upward trend in Robusta prices during the 2021–2024 test period further amplifies the advantage of an autoregressive model, which naturally extrapolates a persistent trend better than models that rely on cross-sectional variation among predictors.
+### Arabica vs Robusta: Structural Differences
 
-The failure of MLR on Robusta but not Arabica is partly a sample size effect — 153 vs 211 training observations — but also reflects the more pronounced multicollinearity among Robusta predictors. Robusta production is geographically concentrated in Vietnam and Indonesia, meaning that supply shocks are more correlated with specific macroeconomic conditions in those countries, which in turn co-move with global macro variables. This amplifies the collinearity problem relative to Arabica, where production is more geographically diversified.
+The contrast between Arabica and Robusta results across models reveals structural differences between the two markets that go beyond the shorter sample available for Robusta.
 
-The relative performance of tree-based models on Robusta — RF at 0.692, XGBoost at 0.796 — is lower than their Arabica counterparts despite the shorter and arguably simpler test period. This reflects the extrapolation limitation of ensemble methods: Random Forest and XGBoost average over training observations and cannot produce predictions that substantially exceed the range of target values seen during training. The sharp upward acceleration in Robusta prices from mid-2023 onward moves beyond the price range of the training set, causing both models to produce forecasts that flatten while the observed series continues rising — a pattern clearly visible in the forecast trajectory plots.
+The dominance of ARIMAX on Robusta ($R^2$ = 0.929 vs 0.821 for Arabica) reflects the stronger autoregressive persistence of Robusta prices over the test period. The ARIMA(3,0,1) error structure selected for Robusta, compared to ARIMA(1,0,0) for Arabica, indicates that Robusta price dynamics involve more complex short-run autocorrelation patterns, which ARIMAX captures through its MA component in addition to the AR terms. The near-monotonic upward trend in Robusta prices during the 2021–2024 test period further amplifies the advantage of an autoregressive model, which extrapolates a persistent trend more naturally than models that rely on cross-sectional variation among predictors.
 
-### Robustness of the Aggregation Methodology
+The failure of MLR on Robusta but not Arabica is partly a sample size effect, with 153 versus 211 training observations, but also reflects the more pronounced multicollinearity among Robusta predictors. Robusta production is geographically concentrated in Vietnam and Indonesia, meaning that supply shocks are more correlated with specific macroeconomic conditions in those countries, which in turn co-move with global macro variables. This amplifies the collinearity problem relative to Arabica, where production is more geographically diversified across twelve countries spanning different climatic zones and economic environments.
 
-The disaggregated robustness check provides strong ex-post validation of the production-weighted index methodology adopted in this study. Replacing the two aggregated climate indices with the 28 individual national series systematically deteriorates out-of-sample $R^2$ across all four ML models and both coffee varieties, with every $ΔR^2$ value negative. The degradation is moderate for Random Forest ($ΔR^2$ of −0.038 for Arabica, −0.112 for Robusta) and XGBoost (−0.020 and −0.058), but catastrophic for SVM and ANN, which produce negative $R^2$ values — worse than a naive mean forecast — under the disaggregated specification.
+The relatively weaker performance of tree-based models on Robusta, with Random Forest at $R^2$ = 0.695 and XGBoost at 0.796 compared to their Arabica counterparts of 0.811 and 0.818, reflects the extrapolation limitation of ensemble methods. Random Forest and XGBoost average over training observations and cannot produce predictions that substantially exceed the range of target values seen during training. The sharp upward acceleration in Robusta prices from mid-2023 onward moves beyond the price range of the training set, causing both models to produce forecasts that flatten while the observed series continues rising. This limitation is clearly visible in the forecast trajectory and residual plots, where a persistent negative bias emerges for both tree-based models from late 2022 onward.
 
-This pattern is precisely what the curse of dimensionality predicts: with 40 regressors and only approximately 170 training observations, models sensitive to input dimensionality (SVM kernel, ANN weight matrix) become severely overparameterised and cannot generalise to the test period. The ensemble methods RF and XGBoost are more robust to this problem through their built-in variable selection and regularisation mechanisms, but still suffer a meaningful performance loss.
+### Robustness of the Methodology
 
-Beyond the dimensionality argument, the results suggest that the production-weighted aggregation actually improves the climate signal by averaging out country-specific noise. Individual national series contain measurement error, idiosyncratic seasonal patterns and short-run anomalies that are not relevant to the global price formation mechanism. The weighted average, by construction, emphasises the conditions in the most important producing countries and attenuates irrelevant variation from smaller producers. This noise-reduction effect appears to outweigh any information loss from aggregation, at least at the monthly frequency and one-step-ahead horizon of this study.
+The three robustness checks conducted in this study provide complementary evidence on the sensitivity of the main results to key methodological choices.
 
-### Variety-Specific Specification
+The disaggregated climate robustness check provides strong validation of the production-weighted aggregation approach. Replacing the two aggregated indices with the 28 individual national series systematically deteriorates out-of-sample $R^2$ across all four ML models and both coffee varieties, with every $ΔR^2$ value negative. The degradation is moderate for Random Forest and XGBoost but severe for SVM and ANN, which produce negative $R^2$ values under the disaggregated specification. This pattern is consistent with the curse of dimensionality: with 40 regressors and approximately 170 training observations, models sensitive to input dimensionality become severely overparameterised. Beyond the dimensionality argument, the results suggest that production-weighted aggregation improves the climate signal by averaging out country-specific noise and idiosyncratic seasonal patterns that are irrelevant to global price formation. The aggregation methodology is therefore validated both statistically and economically.
 
-The variety-specific robustness check yields asymmetric results across the two coffee varieties, revealing an important structural difference in how variety-relevant climate and supply information contributes to predictive accuracy.
+The variety-specific robustness check yields asymmetric results that reveal an important structural difference between the two markets. For Robusta, restricting climate indices and fundamentals to the six actual Robusta-producing countries improves performance for four of the six models, with XGBoost reaching its strongest result across all configurations at $R^2$ = 0.849. This improvement is economically intuitive: global indices dilute the Robusta climate and supply signal by including conditions in countries that produce virtually no Robusta, and restricting to Vietnam, Indonesia, Uganda, Côte d'Ivoire, India and Brazil provides more targeted information about the supply conditions that actually drive Robusta prices. For Arabica, all six models deteriorate under the variety-specific specification. The global indices are in practice already dominated by Arabica-producing countries, as Brazil alone accounts for approximately 39% of world coffee production and approximately 47% of the Arabica-specific weight, so switching specifications changes the climate indices only marginally while simultaneously reducing the information content of the supply-demand fundamentals by excluding Robusta-producing countries whose consumption and export activity also influences global price formation.
 
-For Robusta, the variety-specific specification improves out-of-sample performance for three of the six models. ARIMAX gains marginally (+0.008, $R^2$=0.937), while Random Forest (+0.023) and XGBoost (+0.053) show more meaningful improvements — XGBoost in particular reaches $R^2$=0.849 under the variety-specific specification, its strongest result across all configurations tested in this study. This confirms the central hypothesis motivating this robustness check: using climate indices and fundamentals restricted to Vietnam, Indonesia, Uganda, Côte d'Ivoire and India — the countries that actually produce Robusta — provides more relevant supply-side information than the global aggregates, which dilute the Robusta signal by including conditions in countries that produce virtually none. The improvement is most pronounced for the gradient boosting models, which are best placed to exploit the more targeted non-linear relationships between Robusta-specific supply conditions and price dynamics.
-
-For Arabica, all six models deteriorate under the variety-specific specification, with ARIMAX losing 0.177 $R^2$ points and ANN producing a negative $R^2$ of −0.413. This result is counterintuitive at first glance but has a structural explanation. The global climate and supply indices used in the baseline specification are in practice already dominated by Arabica-producing countries — Brazil alone accounts for approximately 35% of world coffee production and 48.5% of the Arabica-specific weight. Switching to the variety-specific specification therefore changes the indices only marginally for Arabica, while simultaneously reducing the sample of fundamentals and potentially introducing noise from the variety split adjustments applied to mixed producers. The deterioration of ANN in particular reflects the sensitivity of that model to any perturbation of the input variables in the presence of a small training sample.
-
-Taken together, these results suggest that variety-specific predictors are a genuine improvement for Robusta but not for Arabica, where the global specification already captures the relevant producing-country conditions. The XGBoost model under the Robusta variety-specific specification — $R^2$=0.849 — represents the strongest result for that variety across all configurations and specifications estimated in this study.
+The OECD GDP growth robustness check provides no support for including this variable as a predictor. Moving from monthly to quarterly frequency alone substantially degrades performance for most models, most severely for ANN, which collapses from $R^2$ = 0.453 to $-$0.951 for Arabica. Once frequency is held fixed, the addition of GDP growth produces no consistent improvement across models or varieties. This negative result is consistent with the information already contained in the baseline predictor set: once CPI, the Federal Funds Rate, world consumption and the dollar index are included, OECD GDP growth carries little additional demand-side information at the frequency relevant for coffee futures pricing. The result also reflects a fundamental feasibility constraint: GDP growth has no monthly equivalent, so testing its contribution necessarily means testing it jointly with a frequency change that, on its own, already degrades out-of-sample performance. A genuinely monthly test of the variable's marginal contribution is therefore not feasible with the data available.
 
 ## Limitations
 
-### Spurious Regression and Non-Stationarity
+### Non-Stationarity and Spurious Regression
 
-The most significant methodological limitation of this study concerns the treatment of non-stationarity in the machine learning models. As established in the stationarity analysis, the majority of variables — including both dependent price series and most macroeconomic and fundamental predictors — are integrated of order one. The ARIMAX model handles this internally through the differencing parameter selected by `auto.arima()`, and the absence of differencing in the final specifications ($d = 0$ for both series) reflects the absorption of the common trend by the exogenous regressors. For the ML models, however, estimating on levels rather than first differences raises the Granger-Newbold spurious regression concern: two independently trending series will exhibit high R² in levels even in the absence of any genuine predictive relationship.
+The most significant methodological limitation of this study concerns the treatment of non-stationarity in the machine learning models. As established in the stationarity analysis, the majority of variables, including both dependent price series and most macroeconomic and fundamental predictors, are integrated of order one. The ARIMAX model handles this internally through the differencing parameter selected by `auto.arima()`, and the absence of differencing in the final specifications ($d=0$for both series) reflects the absorption of the common trend by the exogenous regressors. For the ML models, estimating on levels rather than first differences raises the spurious regression concern: two independently trending series will exhibit high $R^2$ in levels even in the absence of any genuine predictive relationship.
 
-The decision to estimate ML models on levels rather than first differences was motivated by the empirical finding that first-differenced specifications produced near-zero $R^2$ values, confirming that month-to-month price changes are largely unpredictable at this frequency. While this decision is pragmatically defensible — the models exploit genuine trending co-movement among fundamentally linked variables rather than spurious correlations between unrelated series — it implies that the reported $R^2$ values for the ML models reflect in part the shared trend component of the series rather than purely their ability to forecast price dynamics. This limitation is consistent with the broader commodity price forecasting literature, where in-sample fit on levels is routinely high and out-of-sample performance on differences is substantially lower. Future work could address this through cointegration-based specifications that model the long-run equilibrium relationship between prices and fundamentals while correcting for short-run deviations.
+The decision to estimate ML models on levels was motivated by the empirical finding that first-differenced specifications produced near-zero $R^2$ values, confirming that month-to-month price changes are largely unpredictable at this frequency. While this decision is pragmatically defensible, as the models exploit genuine trending co-movement among fundamentally linked variables rather than spurious correlations between unrelated series, it implies that the reported $R^2$ values for the ML models reflect in part the shared trend component of the series rather than purely their ability to forecast price dynamics. Future work could address this through cointegration-based specifications that model the long-run equilibrium relationship between prices and fundamentals while correcting for short-run deviations.
 
 ### ANN Instability
 
-The Artificial Neural Network implemented via the nnet package exhibits notable instability in the walk-forward forecasting setting, producing a pronounced upward spike in Arabica forecasts around mid-2022 that reaches approximately 3.5 USD/lb against an observed price of around 2.5 USD/lb. This instability arises from the random weight reinitialisation at each step of the walk-forward loop: with only approximately 170 training observations at the early test steps and 75 parameters to estimate (14 inputs × 5 hidden neurons + 5 output weights), the network is susceptible to converging to local minima that produce extreme predictions for isolated observations. A fixed seed partially mitigates but does not eliminate this problem, as the loss landscape of a feedforward network with random initialisation contains multiple local optima of varying quality.
+The Artificial Neural Network implemented via the nnet package exhibits notable instability in the walk-forward forecasting setting. With only approximately 170 training observations at the early test steps and 75 connection weights to estimate for the 5-neuron Arabica architecture, the network is susceptible to converging to local minima that produce extreme predictions for isolated observations. A fixed random seed partially mitigates but does not eliminate this problem, as the loss landscape of a feedforward network contains multiple local optima of varying quality. The pronounced upward spikes visible in the ANN forecast trajectory plots for both varieties are a direct manifestation of this instability. More robust implementations would require ensemble averaging across multiple random initialisations, explicit regularisation such as L2 weight decay or dropout, or recurrent architectures such as Long Short-Term Memory networks that are specifically designed for sequential data and maintain a hidden state across time steps rather than reinitialising at each walk-forward step.
 
-More robust ANN implementations would require either ensemble averaging across multiple random initialisations at each walk-forward step, explicit regularisation (L2 weight decay or dropout), or a deeper architecture with batch normalisation. Recurrent architectures such as Long Short-Term Memory (LSTM) networks are specifically designed for sequential data and would avoid the reinitialisation problem by maintaining a hidden state across time steps, but their implementation was outside the scope of this study given the coursework constraints.
+### Hyperparameter Sensitivity
 
-### SVM Hyperparameter Sensitivity
+The hyperparameter tuning procedure used for both SVM and ANN relies on a single chronological pre-loop split of the initial training window rather than a fully nested walk-forward search. This means that the selected hyperparameters minimise error on one specific validation window rather than across the full range of training window sizes encountered during the walk-forward loop. For ANN in particular, the tuning search selected a 3-neuron architecture for Robusta that performs worse out-of-sample than larger architectures would, illustrating the known sensitivity of small feedforward networks to the choice of validation window. Retaining the tuned architecture is the methodologically consistent choice, as selecting hyperparameters based on test set performance would violate the walk-forward validation protocol, but this result highlights the importance of more robust tuning procedures in future work.
 
-The Support Vector Machine is estimated with fixed hyperparameters ( $c=1$, $γ=0.1$) without systematic grid search or temporal cross-validation. The forecast trajectory plots reveal a consistent downward bias in SVM predictions for Arabica throughout the test period, confirming that the chosen hyperparameters are suboptimal for this series. A grid search over the $(c, γ)$ space via blocked time series cross-validation — where training and validation windows respect the temporal ordering of observations — would likely yield substantial improvements in both bias and variance. However, the computational cost of nested walk-forward estimation with hyperparameter search was prohibitive given the sample size and the six-model comparative framework of this study. The SVM results should therefore be interpreted as a lower bound on the achievable performance of kernel-based methods for coffee price forecasting, rather than as a definitive assessment of their suitability.
+### Climate Data Resolution
 
-### Climate Data Limitations
-
-The national climate averages used to construct the production-weighted indices are computed as simple arithmetic means across all ADM1 regions within each country, without intra-country production weights. This implies that non-producing regions contribute equally to the national average as major producing areas — for example, the Amazon basin in Brazil carries the same weight as Minas Gerais, which accounts for approximately 50% of Brazilian coffee production. The practical effect is an attenuation of the climate signal in countries with large non-producing territories, most notably Brazil, Indonesia and Ethiopia. Sub-national production data at the ADM1 level are not systematically available from the USDA FAS PSD database or other publicly accessible sources, making intra-country production weighting infeasible with the data collected for this study. Future work could address this limitation using remote sensing-based estimates of coffee cultivation area at high spatial resolution, such as those produced by the Global Coffee Watch initiative, to construct more targeted intra-country weights.
+The national climate averages used to construct the production-weighted indices are computed as simple arithmetic means across all ADM1 regions within each country, without intra-country production weights. This implies that non-producing regions contribute equally to the national average as major producing areas. For Brazil, for example, the Amazon basin carries the same weight as the coffee-producing states of Minas Gerais and São Paulo, attenuating the climate signal in countries with large non-producing territories. Sub-national production data at the ADM1 level are not systematically available from the USDA FAS PSD database, making intra-country production weighting infeasible with the data collected for this study. Future work could address this using remote sensing-based estimates of coffee cultivation area at high spatial resolution to construct more targeted intra-country weights.
 
 ### Data Availability Constraints
 
-Two variables are subject to structural data gaps that restrict the estimation sample for certain model specifications. Robusta futures prices from Refinitiv are available only from January 2008, reducing the Robusta estimation sample to 192 monthly observations compared to 288 for Arabica. This shorter sample amplifies the sensitivity of the OLS estimator in the MLR model to multicollinearity and reduces the number of walk-forward training observations available at early test steps for all models. The CFTC Disaggregated COT report was introduced in June 2006, so the Managed Money net position variable is missing for the first 77 months of the analysis period. Both gaps are handled by restricting model estimation to complete-case sub-samples, but they imply that results for Robusta and for specifications including the COT variable are based on shorter and potentially less representative samples than the full 2000–2023 analysis period.
+Two structural data gaps restrict the estimation sample for certain model specifications. Robusta futures prices are available only from January 2008, reducing the Robusta estimation sample to 192 monthly observations compared to 288 for Arabica. The CFTC Disaggregated COT report was introduced in June 2006, so the Managed Money net position is missing for the first 77 months of the analysis period. Both gaps are handled by restricting estimation to complete-case sub-samples, but they imply that Robusta results and specifications including the COT variable are based on shorter and potentially less representative samples than the full 2000–2023 period.
 
 ### Static Model Specifications
 
-All six models estimated in this study assume a static relationship between coffee prices and their predictors — that is, the coefficients or feature importances are fixed over time (or re-estimated on an expanding window that treats all historical observations equally). This assumption is at odds with the documented structural changes in the coffee market over the analysis period, including the progressive financialisation of commodity markets from the mid-2000s onward, the post-2008 shift in monetary policy regimes, and the supply chain disruptions of the COVID-19 period. A model estimated on pre-2010 data may assign different weights to financial variables than one estimated on post-2015 data, and a static specification cannot capture this evolution. Time-varying parameter models — such as rolling-window ML specifications with a fixed rather than expanding training window — would allow the predictor relationships to evolve over time and may improve performance in structurally shifting environments. This extension is left for future research.
+All six models assume a static relationship between coffee prices and their predictors, with coefficients or feature importances that are fixed over time or re-estimated on an expanding window that treats all historical observations equally. This assumption is at odds with the structural changes documented in the coffee market over the analysis period, including the progressive financialisation of commodity markets from the mid-2000s onward, the post-2008 shift in monetary policy regimes, and the supply chain disruptions of the COVID-19 period. Time-varying parameter models, such as rolling-window ML specifications with a fixed rather than expanding training window, would allow predictor relationships to evolve over time and may improve performance in structurally shifting environments.
+
+### ARIMAX Residual Autocorrelation
+
+The ACF and PACF diagnostics of the ARIMAX residuals reveal an asymmetry between the two series. For Robusta, the ARIMA(3,0,1) error structure has fully absorbed the short-run autocorrelation, with no significant spike across all 24 lags. For Arabica, significant spikes remain at lags 1, 2, 5, 6, 16 and 24 in the ACF, and at lags 1, 5, 8 and 10 in the PACF, indicating that the ARIMA(1,0,0) error structure does not fully capture the medium-range autocorrelation dynamics of the Arabica residuals. A higher-order specification incorporating additional AR terms at lags 5 or 6 would likely reduce this residual dependence, though the walk-forward computational constraints imposed a maximum order of $p=3$in the `auto.arima()` search. This limitation does not invalidate the out-of-sample results given the $R^2$ of 0.821 achieved for Arabica, but it represents a direction for future refinement.
 
 # Conclusion
 
-This study set out to assess the predictive accuracy of six forecasting models — two econometric benchmarks (ARIMAX and Multiple Linear Regression) and four machine learning algorithms (Random Forest, XGBoost, Support Vector Machine and Artificial Neural Network) — applied to monthly Arabica and Robusta coffee futures prices over the 2000–2023 period. Using a walk-forward expanding window validation protocol with an 80/20 train/test split, models were evaluated on three out-of-sample metrics — $R^2$, MSE and MAE — across a rich predictor set spanning macroeconomic, fundamental, climatic and speculative variables.
+This study estimated six forecasting models, two econometric benchmarks in the form of ARIMAX and Multiple Linear Regression and four machine learning algorithms comprising Random Forest, XGBoost, Support Vector Machine and Artificial Neural Network, applied to monthly Arabica and Robusta coffee futures prices over the 2000–2023 period. Using a walk-forward expanding window validation protocol with an 80/20 train/test split, all models were evaluated on three out-of-sample metrics across a rich predictor set spanning macroeconomic, fundamental, climatic and speculative variables.
 
-The principal empirical finding is that ARIMAX and XGBoost emerge as the strongest models for both coffee varieties under the baseline specification, achieving out-of-sample $R^2$ values of 0.821 and 0.818 for Arabica and 0.929 and 0.796 for Robusta respectively. The strong performance of ARIMAX confirms that the persistence of prices around their own past values is a primary source of short-run predictability. The competitive performance of XGBoost demonstrates that gradient boosting can identify non-linear relationships among predictors that the linear ARIMAX structure cannot capture. The Multiple Linear Regression benchmark performs well for Arabica but collapses for Robusta ($R^2$ = 0.276), confirming that a static linear model without temporal dynamics is insufficient when the estimation sample is short and predictors are highly correlated.
+The principal empirical finding is that ARIMAX and XGBoost emerge as the strongest models for both coffee varieties under the baseline specification, achieving out-of-sample $R^2$ values of 0.821 and 0.818 for Arabica and 0.929 and 0.796 for Robusta respectively. The strong performance of ARIMAX confirms that the persistence of prices around their own past values is a primary source of short-run predictability in coffee futures markets. The competitive performance of XGBoost demonstrates that gradient boosting can identify non-linear relationships among predictors that the linear regression component of ARIMAX cannot accommodate. The Multiple Linear Regression benchmark performs reasonably well for Arabica but collapses for Robusta at $R^2$ = 0.276, confirming that a static linear model without temporal dynamics is insufficient when the estimation sample is short and predictors are highly correlated.
 
-The variable importance analysis reveals that financial and speculative variables dominate the predictor rankings for both varieties. For Arabica, the COT net Managed Money position and Sugar No.11 prices are the two most influential predictors, reflecting the financialisation of the coffee futures market and the land substitution dynamics between coffee and sugar in Brazil. For Robusta, WTI crude oil and CPI rank first, consistent with the energy-intensive production logistics of Vietnam and Indonesia. Climate variables contribute relatively little predictive power at monthly frequency — a finding explained by the long lag between climate shocks and their effect on prices, which operates through production and inventory channels over six to twelve months and cannot be captured by a contemporaneous monthly model.
+The variable importance analysis reveals that financial and speculative variables dominate the predictor rankings for both varieties. For Arabica, Sugar No.11 prices and the COT net Managed Money position are the two most influential predictors, reflecting the financialisation of the coffee futures market and the supply-side linkage between coffee and sugar in Brazil. For Robusta, WTI crude oil and CPI rank first, consistent with the energy-intensive production logistics of Vietnam and Indonesia and the price-elastic demand structure of the soluble coffee segment. Climate variables contribute relatively little predictive power at the one-month-ahead forecasting horizon, a finding explained by the long lag, typically six to twelve months, between climate shocks and their effect on prices through the production and inventory channel. This is not evidence that climate is irrelevant to coffee prices, but rather that a contemporaneous monthly model is not designed to capture this delayed transmission.
 
-The disaggregated robustness check confirms that the production-weighted aggregation of climate indices is the right approach: replacing the two global indices with the 28 individual national series systematically worsens performance across all ML models, confirming that aggregation improves the climate signal by filtering out country-specific noise.
+The three robustness checks yield several findings of independent interest. The disaggregated climate check confirms that the production-weighted aggregation of climate indices is the appropriate specification: replacing the two global indices with the 28 individual national series systematically worsens performance across all ML models, validating the aggregation approach both statistically and economically. The variety-specific check reveals an important asymmetry: restricting climate and supply variables to Robusta-producing countries improves performance for four of the six models, with XGBoost reaching its strongest result at $R^2$= 0.849, while the same restriction uniformly deteriorates Arabica performance because the global indices are already dominated by Arabica-producing countries. The GDP growth check provides no support for including this variable as a predictor, with its marginal contribution found to be small, inconsistently signed across models and series, and confounded by the cost of moving to quarterly frequency that the absence of a monthly equivalent necessitates.
 
-The variety-specific robustness check yields an important asymmetric finding. For Robusta, restricting climate indices and fundamentals to the actual Robusta-producing countries improves performance for three of the six models, with XGBoost reaching its best result across all configurations at $R^2$ = 0.849. For Arabica, the global specification already captures the relevant conditions — Brazil alone dominates both the global and Arabica-specific indices — and the variety-specific specification does not improve performance.
+Several limitations constrain the interpretation of these results. Estimating ML models on non-stationary price levels raises the risk of spurious correlations driven by common trends. The ANN exhibits instability under walk-forward re-estimation with small training samples. The hyperparameter tuning procedure relies on a single pre-loop validation split rather than a fully nested walk-forward search. The national climate averages do not account for the distribution of coffee cultivation within each country. And all six models assume static predictor relationships over a 24-year period that witnessed substantial structural change in the coffee market.
 
-Several limitations constrain the interpretation of these results. Estimating ML models on non-stationary price levels raises the risk of spurious correlations driven by common trends rather than genuine predictive relationships. The ANN shows instability under walk-forward re-estimation, and the SVM uses fixed hyperparameters that are likely suboptimal. The national climate averages treat all regions within a country equally, regardless of whether they actually produce coffee.
+These limitations point to several directions for future work. Cointegration-based error correction specifications would better handle the non-stationarity of the series while preserving the long-run equilibrium relationships among prices and fundamentals. Incorporating lagged climate variables at three, six and twelve months would allow the model to capture the delayed weather-to-price transmission channel that contemporaneous specifications cannot exploit. Recurrent neural network architectures, in particular Long Short-Term Memory networks, would address the ANN instability by maintaining a hidden state across time steps rather than reinitialising at each walk-forward step. Finally, rolling-window or regime-switching specifications would allow predictor relationships to evolve over time, better reflecting the structural shifts the coffee market has undergone over the analysis period.
 
-These limitations point to several directions for future work. Using error correction models would better handle the non-stationarity issue. Adding lagged climate variables at three, six and twelve months would better capture the delayed effect of weather on production and prices. Finally, allowing model parameters to evolve over time — rather than treating the relationships as fixed over 24 years — would better reflect the structural changes the coffee market has undergone, including the growing influence of financial investors and the supply disruptions of the post-pandemic period.
+From a practical standpoint, the results suggest that market participants seeking short-run price signals for coffee would benefit most from monitoring speculative positioning in the futures market and energy prices rather than focusing on supply fundamentals or climate conditions at monthly frequency. The variety-specific results further suggest that Robusta-focused analysts should track supply conditions in Vietnam and Indonesia specifically, as global aggregates dilute the variety-relevant signal. The consistent performance of multiple model families across both series and multiple specifications strengthens the reliability of these conclusions and suggests that the predictor set constructed in this study captures genuine and robust information about the drivers of coffee futures prices.
 
-From a practical standpoint, the results suggest that traders and analysts seeking short-run price signals for coffee would benefit most from monitoring speculative positioning in the futures market and energy prices, rather than focusing on supply fundamentals or climate conditions at monthly frequency. The variety-specific results further suggest that Robusta-focused analysts should track supply conditions in Vietnam and Indonesia specifically, rather than global aggregates. The consistent results across multiple model families and specifications strengthen the reliability of these conclusions.
 
-Claude (Anthropic) was used as an artificial intelligence assistant in the preparation of this thesis, including support for writing and structuring the text and for the design and debugging of the R data processing and modelling pipeline implemented in Quarto.
+**Claude (Anthropic) was used as an artificial intelligence assistant in the preparation of this thesis, including support for writing and structuring the text and for the design and debugging of the R data processing and modelling pipeline implemented in Quarto.**
