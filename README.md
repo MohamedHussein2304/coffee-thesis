@@ -134,4 +134,4 @@ This project is for academic purposes only. Data sources are subject to their re
 
 ## AI Assistance Declaration
 
-**Claude (Anthropic) was used as an AI assistant during the development of this project, including support for writing and structuring the thesis text and for the design and debugging of the R data processing and modelling pipeline implemented in Quarto. All analytical decisions, interpretations, and written content remain the sole responsibility of the author.**
+Claude (Anthropic) was used as an AI assistant during the development of this project, including support for writing and structuring the thesis text and for the design and debugging of the R data processing and modelling pipeline implemented in Quarto. All analytical decisions, interpretations, and written content remain the sole responsibility of the author.
