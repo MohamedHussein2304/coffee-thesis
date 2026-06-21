@@ -30,7 +30,7 @@ packages_requis <- c(
   "ggplot2", "corrplot", "tseries", "urca", "forecast",
   "scales", "gridExtra", "knitr", "kableExtra", "moments",
   "ggrepel", "randomForest", "xgboost", "e1071", "nnet",
-  "Metrics", "tibble"
+  "Metrics", "tibble", "ggh4x"
 )
 for (pkg in packages_requis) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -2101,9 +2101,9 @@ The scree plot and accompanying table confirm that the predictor set is genuinel
 
 ## Stationarity Tests
 
-Prior to model estimation, all series are tested for stationarity using two complementary procedures. The Augmented Dickey-Fuller (ADF) test evaluates the null hypothesis of a unit root — rejection at the 5% level indicates stationarity. The KPSS test evaluates the null hypothesis of stationarity — rejection at the 5% level indicates non-stationarity. A series is classified as stationary when both tests agree: ADF rejects its null and KPSS does not reject its null. Series for which at least one test indicates non-stationarity are subsequently tested in first differences to determine the appropriate integration order $d$ prior to inclusion in the ARIMAX and linear regression models.
+Prior to model estimation, all series are tested for stationarity using two complementary procedures. The Augmented Dickey-Fuller (ADF) test evaluates the null hypothesis of a unit root, with rejection at the 5% level indicating stationarity. The KPSS test evaluates the null hypothesis of stationarity, with rejection at the 5% level indicating non-stationarity. A series is classified as stationary when both tests agree, that is, when the ADF rejects its null and the KPSS does not reject its null. This dual-confirmation criterion reduces the risk of misclassification arising from the size distortions of each test individually. Series for which at least one test indicates non-stationarity are re-tested in first differences to determine the appropriate integration order $d$ prior to inclusion in the ARIMAX and linear regression models.
 
-The chunk below implements this testing procedure for all 15 variables. Series flagged as non-stationary by at least one test are automatically selected for re-testing in first differences, so the second table is generated without manual intervention. Result columns are colour-coded in green for stationary and red for non-stationary, making disagreements between the two tests immediately visible.
+*The chunk below implements this testing procedure for all 15 variables. Series flagged as non-stationary by at least one test are automatically selected for re-testing in first differences, so the second table is generated without manual intervention. Result columns are colour-coded in green for stationary and red for non-stationary, making disagreements between the two tests directly visible.*
 
 ```{r stationarity, warning=FALSE}
 
@@ -2111,9 +2111,9 @@ The chunk below implements this testing procedure for all 15 variables. Series f
 # The COT net position is excluded here because its 77-month
 # gap at the start of the sample would distort the test results;
 # its stationarity properties are discussed in the text.
-vars_test <- c("prix_arabica", "prix_robusta", "prix_sucre", "prix_cacao",
+vars_test <- c("arabica_price", "robusta_price", "sugar_price", "cocoa_price",
                "cpi", "wti", "fed_funds_rate", "dxy",
-               "production", "consommation", "exportations", "ending_stocks",
+               "production", "consumption", "exports", "ending_stocks",
                "indice_precip", "indice_temp", "oni")
 
 labels_test <- c("Arabica futures", "Robusta futures", "Sugar No.11", "Cocoa NY",
@@ -2190,7 +2190,7 @@ vars_nonstatio_idx <- which(
 )
 
 resultats_diff <- do.call(rbind, lapply(vars_nonstatio_idx, function(i) {
-  x <- na.omit(diff(dataset_mensuel[[vars_test[i]]]))
+  x <- na.omit(diff(na.omit(dataset_mensuel[[vars_test[i]]])))
   if (length(x) == 0) return(NULL)
   cbind(data.frame(Variable = paste0("\u0394 ", labels_test[i]),
                    stringsAsFactors = FALSE),
@@ -2230,17 +2230,17 @@ kable(resultats_diff,
                                 "darkgreen", "red"))
 ```
 
-The results from the two stationarity tests are largely consistent and confirm the expected properties of the series. In levels, the majority of variables are non-stationary according to at least one of the two tests, which is typical of commodity prices and macroeconomic time series over a 24-year horizon. The two dependent variables — Arabica and Robusta futures prices — are classified as non-stationary by both ADF and KPSS, confirming the presence of a unit root and implying that $d = 1$ will be required in the ARIMAX specifications.
+The results from the two stationarity tests are largely consistent and confirm the expected properties of the series. In levels, the majority of variables are non-stationary according to at least one of the two tests. The two dependent variables present contrasting patterns: Arabica futures prices are classified as non-stationary by both tests, confirming the presence of a unit root, while Robusta futures prices yield conflicting results, with the ADF failing to reject the unit root null and the KPSS failing to reject stationarity.
 
-Several series present conflicting results between the two tests in levels. Production and consumption are stationary according to the ADF but non-stationary according to the KPSS, while Robusta and ending stocks show the reverse pattern. These conflicts typically arise when a series contains a deterministic trend component alongside a stochastic one, causing the two tests — which differ in their null hypotheses — to reach opposite conclusions. In such ambiguous cases, the first-differenced results are decisive.
+Several additional series present conflicting results in levels. Production and Consumption are stationary according to the ADF but non-stationary according to the KPSS, while Robusta futures and Ending stocks show the reverse pattern. Temperature presents the same conflict as Production and Consumption. In such ambiguous cases, the first-differenced results are decisive.
 
-The second table confirms that a single round of differencing is sufficient to achieve stationarity for all non-stationary series: every variable in first differences is classified as stationary by both the ADF and KPSS tests simultaneously. This establishes $d = 1$ as the appropriate integration order across the board, and implies that all non-stationary variables will enter the ARIMAX and multiple linear regression models in first-differenced form. Stationary variables in levels — namely the precipitation index and the ONI — will be included without transformation.
+The second table confirms that a single round of differencing is sufficient to achieve stationarity for all 13 non-stationary or conflicted series: every variable in first differences is classified as stationary by both the ADF and KPSS tests simultaneously. This establishes $d=1$ as the appropriate integration order for the non-stationary series, the treatment of which varies across model families as discussed in the methodology. The two variables classified as stationary in levels by both tests, namely the precipitation index and the ONI, will be included without transformation.
 
 ## Seasonality Analysis
 
-The seasonality analysis examines whether coffee futures prices exhibit systematic within-year patterns that repeat across calendar months. Detecting such patterns is relevant for model specification: if prices follow predictable seasonal cycles, this would need to be accounted for explicitly in the ARIMAX framework through seasonal differencing or seasonal AR/MA components. The analysis is conducted separately for Arabica and Robusta, computing for each calendar month the average price and the associated standard deviation across all years in the respective sample period.
+The seasonality analysis examines whether coffee futures prices exhibit systematic within-year patterns that repeat across calendar months. Detecting such patterns is relevant for model specification: if prices follow predictable seasonal cycles, they would need to be accounted for explicitly in the ARIMAX framework through seasonal differencing or seasonal AR/MA components. 
 
-The chunk below implements this analysis for both series. Robusta rows prior to 2008 are filtered out before grouping so that monthly averages are not biased by implicit zero-filling over the missing years. The ±1 standard deviation ribbon around each monthly mean provides a visual gauge of interannual dispersion: a narrow band relative to the cross-month range signals consistent seasonality, while a wide band indicates that year-to-year variation dominates any calendar-month pattern.
+*The chunk below implements this analysis for both series. Robusta rows prior to 2008 are filtered out before grouping so that monthly averages reflect only the years for which data are available. The ±1 standard deviation ribbon around each monthly mean provides a visual gauge of interannual dispersion: a narrow band relative to the cross-month range signals consistent seasonality, while a wide band indicates that year-to-year variation dominates any calendar-month pattern.*
 
 ```{r seasonality, fig.width=10, fig.height=8}
 
@@ -2257,8 +2257,8 @@ df_sais_arabica <- dataset_mensuel %>%
   mutate(mois     = as.integer(substr(date, 6, 7)),
          nom_mois = factor(month.abb[mois], levels = month.abb)) %>%
   group_by(mois, nom_mois) %>%
-  summarise(moy = mean(prix_arabica, na.rm = TRUE),
-            sd  = sd(prix_arabica,   na.rm = TRUE),
+  summarise(moy = mean(arabica_price, na.rm = TRUE),
+            sd  = sd(arabica_price,   na.rm = TRUE),
             .groups = "drop")
 
 
@@ -2266,17 +2266,16 @@ df_sais_arabica <- dataset_mensuel %>%
 # ROBUSTA SEASONALITY (2008-2023)
 # Rows with missing Robusta prices (2000-2007) are filtered
 # out before grouping so that the cross-year averages reflect
-# only the 16 years for which data are available, avoiding
-# a downward bias in monthly means from implicit zero-filling.
+# only the 16 years for which data are available.
 # ----------------------------------------------------------
 
 df_sais_robusta <- dataset_mensuel %>%
-  filter(!is.na(prix_robusta)) %>%
+  filter(!is.na(robusta_price)) %>%
   mutate(mois     = as.integer(substr(date, 6, 7)),
          nom_mois = factor(month.abb[mois], levels = month.abb)) %>%
   group_by(mois, nom_mois) %>%
-  summarise(moy = mean(prix_robusta, na.rm = TRUE),
-            sd  = sd(prix_robusta,   na.rm = TRUE),
+  summarise(moy = mean(robusta_price, na.rm = TRUE),
+            sd  = sd(robusta_price,   na.rm = TRUE),
             .groups = "drop")
 
 
@@ -2313,9 +2312,9 @@ p_sais_robusta <- ggplot(df_sais_robusta,
 gridExtra::grid.arrange(p_sais_arabica, p_sais_robusta, ncol = 1)
 ```
 
-Both series display remarkably weak seasonal patterns across the calendar year. Arabica prices show virtually no systematic monthly variation, with the cross-month range of average prices spanning less than USD 0.05/lb — a negligible amplitude relative to the overall price variability captured by the wide confidence bands. This finding is consistent with the global nature of the Arabica futures market, where prices are driven primarily by supply shocks, macroeconomic conditions and speculative positioning rather than predictable seasonal cycles.
+Both series display weak seasonal patterns across the calendar year. Arabica prices show virtually no systematic monthly variation, with the cross-month range of average prices spanning less than USD 0.05/lb, a negligible amplitude relative to the overall price variability captured by the wide confidence bands. This finding is consistent with the global nature of the Arabica futures market, where prices are driven primarily by supply shocks, macroeconomic conditions and speculative positioning rather than predictable seasonal cycles.
 
-Robusta prices exhibit a slightly more pronounced seasonal profile, with averages rising gradually from January through August before declining toward year-end — a pattern that may reflect the timing of the Vietnamese harvest, which typically peaks between October and March and exerts downward pressure on prices in the final quarter. However, the amplitude of this seasonal variation remains small relative to the interannual volatility captured by the standard deviation bands, suggesting that seasonality is not a dominant driver of Robusta price dynamics either.
+Robusta prices exhibit a slightly more pronounced seasonal profile, with averages rising gradually from January through August before declining toward year-end. However, the amplitude of this seasonal variation remains small relative to the interannual volatility captured by the standard deviation bands, suggesting that seasonality is not a dominant driver of Robusta price dynamics either.
 
 Overall, the absence of strong seasonality in both series is an important finding for the modelling phase: it implies that seasonal differencing or seasonal ARIMA components are unlikely to be necessary, and that the main sources of price variation are structural and cyclical rather than calendar-driven.
 
@@ -2329,35 +2328,23 @@ The monthly dataset covering January 2000 to December 2023 is used for all model
 
 ## Data Preprocessing and Stationarity Handling
 
-The stationarity analysis conducted in the preceding section established that the majority of series are integrated of order one — that is, $d = 1$. For the ARIMAX model, non-stationarity is handled internally by `` `auto.arima()` ``, which selects the appropriate differencing order $d$ at each estimation step. For the MLR and ML models, all variables are included in levels, as discussed below. Stationary variables in levels — namely the precipitation index and the ONI — are included without transformation across all model specifications.
+The stationarity analysis conducted in the preceding section established that the majority of series are integrated of order one, that is, $d=1$. For the ARIMAX model, non-stationarity is handled internally by `auto.arima()`, which selects the appropriate differencing order $d$ at each estimation step. For the MLR and ML models, all variables are included in levels for the reasons discussed in the following paragraph. The two variables classified as stationary in levels, namely the precipitation index and the ONI, are included without transformation across all model specifications.
 
-For the machine learning models, which impose no distributional assumptions on the input series, both the original levels and the first-differenced series are used. All variables are normalised to the $[0, 1]$ range using Min-Max scaling prior to ML model estimation, following standard practice in commodity price forecasting:
+For the machine learning models, which impose no distributional assumptions on the input series, all variables are included in their original levels. All variables are normalised to the $[0,1]$ range using Min-Max scaling prior to ML model estimation :
 
 $$x_{\text{scaled}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
 
-Missing values — arising from the Robusta data gap (2000–2007) and the COT availability constraint (2000–June 2006) — are handled by restricting the estimation sample to the sub-period for which all required variables are simultaneously available.
+Missing values, arising from the Robusta data gap (2000–2007) and the COT availability constraint (2000–June 2006), are handled by restricting the estimation sample to the sub-period for which all required variables are simultaneously available.
 
-A note on the treatment of non-stationary series in the machine learning models is warranted. While the ARIMAX model handles non-stationarity internally through the differencing parameter $d$ selected by `auto.arima`, the ML models are estimated on the original levels of all series. This choice is deliberate: estimating ML models on first-differenced series — which represent monthly price changes rather than price levels — yielded near-zero $R^2$ values, confirming that month-to-month price variations are largely unpredictable at this frequency. Estimating on levels allows the ML models to exploit the trending co-movement among variables that carries genuine predictive information about the price trajectory, at the cost of a potential spurious regression concern. This trade-off is acknowledged as a limitation of the study and is discussed further in the limitations section.
+A note on the treatment of non-stationary series in the machine learning models is warranted. While the ARIMAX model handles non-stationarity internally through the differencing parameter $d$ selected by `auto.arima()`, the ML models are estimated on the original levels of all series. This choice is deliberate: estimating ML models on first-differenced series, which represent monthly price changes rather than price levels, yielded near-zero $R^2$ values, confirming that month-to-month price variations are largely unpredictable at this frequency. Estimating on levels allows the ML models to exploit the trending co-movement among variables that carries genuine predictive information about the price trajectory, at the cost of a potential spurious regression concern. This trade-off is acknowledged as a limitation of the study and is discussed further in the limitations section.
 
 ## Walk-Forward Validation Protocol
 
-All models are evaluated using a walk-forward (expanding window) validation protocol, which is the standard approach for time series forecasting and avoids the data leakage that would arise from random cross-validation. The dataset is split into a training set comprising the first 80% of observations and a test set comprising the remaining 20%, yielding approximately 168 training observations and 42 test observations for the Arabica sample, and 152 training and 39 test observations for the Robusta sample.
+All models are evaluated using a walk-forward (expanding window) validation protocol, which avoids the data leakage that would arise from random cross-validation in a time series context. The dataset is split into a training set comprising the first 80% of observations and a test set comprising the remaining 20%, yielding 168 training observations and 43 test observations for the Arabica sample, and 153 training and 39 test observations for the Robusta sample. 
 
-The walk-forward procedure expands the training window by one observation at each step, re-estimates the model, and generates a one-step-ahead forecast. This procedure mimics the real-world forecasting environment in which a practitioner would use all available information up to time $t$ to forecast the price at time $t+1$. Performance metrics are computed on the out-of-sample forecasts accumulated over the full test period, defined as follows:
+The walk-forward procedure expands the training window by one observation at each step, re-estimates the model, and generates a one-step-ahead forecast. Performance metrics are computed on the out-of-sample forecasts accumulated over the full test period: $R^2$ measures the proportion of variance in observed prices explained by the forecasts, MSE penalises large errors through quadratic weighting, and MAE reports the average absolute deviation between forecasts and observed values.
 
-$$R^2 = 1 - \frac{\sum_{t=1}^{T}(\hat{y}_t - y_t)^2}{\sum_{t=1}^{T}(\bar{y} - y_t)^2}$$
-
-$$\text{MSE} = \frac{1}{T}\sum_{t=1}^{T}(y_t - \hat{y}_t)^2$$
-
-$$\text{MAE} = \frac{1}{T}\sum_{t=1}^{T}|y_t - \hat{y}_t|$$
-
-where $y_t$ is the observed price at time $t$, $\hat{y}_t$ is the model forecast, $\bar{y}$ is the mean of observed values over the test period, and $T$ is the number of test observations.
-
-# Results
-
-The following section presents the out-of-sample forecasting results for each of the six models estimated on the Arabica and Robusta futures price series. All metrics ($R^2$ , MSE and MAE) are computed exclusively on the test set, which represents the final 20% of each sample and was never used during model training. The walk-forward validation protocol ensures that no future information leaks into the training window at any step, so the reported figures reflect genuine predictive performance rather than in-sample fit.
-
-The chunk below sets up the shared infrastructure used by all six model chunks: the exogenous variable list, the Min-Max scaling and performance metric functions, and the four dataset variants (levels and first-differenced, for Arabica and Robusta separately). The 80/20 split indices are computed once here and passed directly to each model chunk, guaranteeing an identical train/test partition across all estimations. Sample sizes are printed at the end as a verification step.
+*The chunk below sets up the shared infrastructure used by all six model chunks: the exogenous variable list, the Min-Max scaling and performance metric functions, and the two dataset variants in levels for Arabica and Robusta separately. The 80/20 split indices are computed once here and passed directly to each model chunk, guaranteeing an identical train/test partition across all estimations.*
 
 ```{r preprocessing, message=FALSE, warning=FALSE}
 
@@ -2369,8 +2356,8 @@ The chunk below sets up the shared infrastructure used by all six model chunks: 
 # every model chunk without manual editing.
 # ----------------------------------------------------------
 
-vars_exo <- c("prix_sucre", "prix_cacao", "cpi", "wti", "fed_funds_rate",
-              "dxy", "production", "consommation", "exportations",
+vars_exo <- c("sugar_price", "cocoa_price", "cpi", "wti", "fed_funds_rate",
+              "dxy", "production", "consumption", "exports",
               "ending_stocks", "indice_precip", "indice_temp", "oni",
               "cot_net_mm")
 
@@ -2450,9 +2437,9 @@ preparer_niveaux <- function(df, var_dep) {
 
 preparer_diff <- function(df, var_dep) {
   # Variables classified as non-stationary in levels (see stationarity chunk)
-  vars_to_diff <- c(var_dep, "prix_sucre", "prix_cacao", "cpi", "wti",
-                    "fed_funds_rate", "dxy", "production", "consommation",
-                    "exportations", "ending_stocks", "indice_temp")
+  vars_to_diff <- c(var_dep, "sugar_price", "cocoa_price", "cpi", "wti",
+                    "fed_funds_rate", "dxy", "production", "consumption",
+                    "exports", "ending_stocks", "indice_temp")
   df %>%
     select(date, all_of(c(var_dep, vars_exo))) %>%
     filter(complete.cases(.)) %>%
@@ -2470,16 +2457,16 @@ preparer_diff <- function(df, var_dep) {
 # For Robusta, the monthly dataset is pre-filtered to remove
 # the 2000-2007 rows before passing to the function, so that
 # complete.cases() does not erroneously drop all rows due to
-# the structural NA block in prix_robusta.
+# the structural NA block in robusta_price.
 # ----------------------------------------------------------
 
-df_arabica_levels <- preparer_niveaux(dataset_mensuel, "prix_arabica")
-df_arabica_diff   <- preparer_diff(dataset_mensuel, "prix_arabica")
+df_arabica_levels <- preparer_niveaux(dataset_mensuel, "arabica_price")
+df_arabica_diff   <- preparer_diff(dataset_mensuel, "arabica_price")
 
 df_robusta_levels <- preparer_niveaux(
-  dataset_mensuel %>% filter(!is.na(prix_robusta)), "prix_robusta")
+  dataset_mensuel %>% filter(!is.na(robusta_price)), "robusta_price")
 df_robusta_diff   <- preparer_diff(
-  dataset_mensuel %>% filter(!is.na(prix_robusta)), "prix_robusta")
+  dataset_mensuel %>% filter(!is.na(robusta_price)), "robusta_price")
 
 
 # ----------------------------------------------------------
@@ -2510,9 +2497,13 @@ cat("Robusta diff   — Train:", n_train_rob_dif,
     "| Test:", nrow(df_robusta_diff)   - n_train_rob_dif, "\n")
 ```
 
+# Results
+
+The following sections report the out-of-sample forecasting results for each of the six models, estimated separately for Arabica and Robusta.
+
 ## Multiple Linear Regression (MLR)
 
-This chunk estimates the Multiple Linear Regression benchmark using the same walk-forward expanding window protocol as all other models. Unlike ARIMAX, OLS does not handle non-stationarity internally, so the model is estimated on the levels dataset with the understanding that any spurious regression concern is acknowledged as a limitation. At each step, the entire expanded training window is refitted from scratch using `lm()`, and a one-step-ahead prediction is generated for the current test observation. The code below is written as a sequence of explicit, separate steps rather than as a single chained pipeline, so that each operation can be inspected individually.
+*This chunk estimates the Multiple Linear Regression benchmark using the same walk-forward expanding window protocol as all other models. Unlike ARIMAX, OLS does not handle non-stationarity internally, so the model is estimated on the levels dataset with the understanding that any spurious regression concern is acknowledged as a limitation. At each step, the entire expanded training window is refitted from scratch using `lm()`, and a one-step-ahead prediction is generated for the current test observation. The code below is written as a sequence of explicit, separate steps rather than as a single chained pipeline, so that each operation can be inspected individually.*
 
 ```{r mlr, message=FALSE, warning=FALSE}
 
@@ -2522,7 +2513,7 @@ This chunk estimates the Multiple Linear Regression benchmark using the same wal
 # Arguments:
 #   df      : levels dataset (one row per month)
 #   var_dep : name of the dependent variable column
-#             ("prix_arabica" or "prix_robusta")
+#             ("arabica_price" or "robusta_price")
 #   n_train : size of the initial training window (number of
 #             rows), computed earlier in the preprocessing chunk
 #
@@ -2535,7 +2526,7 @@ fit_mlr <- function(df, var_dep, n_train) {
 
   # STEP 1 — Keep only the columns this model actually needs:
   # the dependent variable plus the 14 exogenous predictors.
-  # vars_exo is defined once in the "Results" setup chunk and
+  # vars_exo is defined once in the preprocessing chunk and
   # reused identically by all six models.
   # The intersect() call is a safety check: if a predictor were
   # ever missing from df, it is simply skipped here instead of
@@ -2599,8 +2590,8 @@ fit_mlr <- function(df, var_dep, n_train) {
 # ESTIMATION — ARABICA AND ROBUSTA
 # ----------------------------------------------------------
 
-res_mlr_ara <- fit_mlr(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-res_mlr_rob <- fit_mlr(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+res_mlr_ara <- fit_mlr(df_arabica_levels, "arabica_price", n_train_ara_lev)
+res_mlr_rob <- fit_mlr(df_robusta_levels, "robusta_price", n_train_rob_lev)
 
 
 # ----------------------------------------------------------
@@ -2618,11 +2609,11 @@ metriques_mlr <- rbind(
 )
 ```
 
-The MLR benchmark performs well for Arabica ($R^2 = 0.784$), capturing a large share of the variance through the linear combination of exogenous variables. For Robusta, however, performance deteriorates significantly ($R^2 = 0.276$), with an MSE of 114,284 and an MAE of 274.6 USD/tonne. This sharp contrast likely reflects the shorter estimation window available for Robusta (2008–2023), which reduces the number of training observations and amplifies the sensitivity of the OLS estimator to multicollinearity among the predictors — a problem already identified in the PCA analysis. The MLR results confirm that a purely static linear specification without temporal dynamics is insufficient to model Robusta price dynamics over a restricted sample.
+The MLR benchmark performs well for Arabica ($R^2$ = 0.784), capturing a large share of the variance through the linear combination of exogenous variables. For Robusta, however, performance deteriorates significantly ($R^2$ = 0.276), with an MSE of 114,285 and an MAE of 274.6 USD/tonne. This sharp contrast likely reflects the shorter estimation window available for Robusta (2008–2023), which reduces the number of training observations and amplifies the sensitivity of the OLS estimator to multicollinearity among the predictors, a problem already documented in the correlation and PCA analyses. The MLR results confirm that a purely static linear specification without temporal dynamics is insufficient to model Robusta price dynamics over a restricted sample.
 
 ## ARIMAX
 
-This chunk estimates the ARIMAX model for both coffee series using a walk-forward expanding window. At each step, `auto.arima()` selects the optimal $(p, d, q)$ order by minimising AIC over the current training window, then generates a one-step-ahead forecast using the next row of exogenous regressors. The model is therefore re-specified at every forecast origin, allowing the autoregressive structure to adapt as new observations are added to the training window. As with the MLR function above, the code is written as a sequence of explicit, separate steps.
+*This chunk estimates the ARIMAX model for both coffee series using a walk-forward expanding window. At each step, `auto.arima()` selects the optimal $(p,d,q)$ order by minimising AIC over the current training window, then generates a one-step-ahead forecast using the next row of exogenous regressors. The model is therefore re-specified at every forecast origin, allowing the autoregressive structure to adapt as new observations are added to the training window. As with the MLR function above, the code is written as a sequence of explicit, separate steps.*
 
 ```{r arimax, message=FALSE, warning=FALSE}
 
@@ -2634,6 +2625,7 @@ library(forecast)
 # Arguments:
 #   df      : levels dataset (one row per month)
 #   var_dep : name of the dependent variable column
+#             ("arabica_price" or "robusta_price")
 #   n_train : size of the initial training window (number of
 #             rows), computed earlier in the preprocessing chunk
 #
@@ -2650,14 +2642,14 @@ fit_arimax <- function(df, var_dep, n_train) {
   # STEP 1 — Separate the dependent variable from the
   # exogenous regressors. auto.arima() requires the regressors
   # as a plain numeric matrix, not a data frame.
-  serie_dependante  <- df[[var_dep]]
+  serie_dependante    <- df[[var_dep]]
   matrice_regresseurs <- as.matrix(df[, vars_exo])
 
   # Safety check: drop any regressor column that is entirely
   # NA (this should not normally happen, since rows with any
   # NA were already removed upstream by preparer_niveaux()).
-  colonnes_valides <- apply(matrice_regresseurs, 2,
-                            function(col) !all(is.na(col)))
+  colonnes_valides    <- apply(matrice_regresseurs, 2,
+                               function(col) !all(is.na(col)))
   matrice_regresseurs <- matrice_regresseurs[, colonnes_valides, drop = FALSE]
 
   # STEP 2 — Split into the initial training set and the test
@@ -2684,7 +2676,7 @@ fit_arimax <- function(df, var_dep, n_train) {
   #
   # Search constraints passed to auto.arima():
   #   max.p = 3, max.q = 3 : keeps the search computationally
-  #     feasible across the ~40 re-estimations of the loop
+  #     feasible across the ~43 re-estimations of the loop
   #   max.d = 1            : consistent with the integration
   #     order established in the stationarity tests
   #   stepwise = TRUE, approximation = TRUE : faster greedy
@@ -2702,8 +2694,8 @@ fit_arimax <- function(df, var_dep, n_train) {
 
     # Observations of the test period already "seen" before step i
     indices_vus <- seq_len(nb_observations_vues)
-    y_vu    <- y_test[indices_vus]
-    xreg_vu <- xreg_test[indices_vus, , drop = FALSE]
+    y_vu        <- y_test[indices_vus]
+    xreg_vu     <- xreg_test[indices_vus, , drop = FALSE]
 
     # The expanding training window for this step
     y_fenetre    <- c(y_train, y_vu)
@@ -2734,10 +2726,10 @@ fit_arimax <- function(df, var_dep, n_train) {
   # kept purely for reporting purposes later in the document:
   # the selected ARIMA order, the regression coefficients, and
   # the residual diagnostics all refer to this training-set-only
-  # model rather than to any of the ~40 models re-estimated
+  # model rather than to any of the ~43 models re-estimated
   # during the walk-forward loop above.
   modele_sur_entrainement <- auto.arima(y_train, xreg = xreg_train,
-                                        stepwise = TRUE,
+                                        stepwise      = TRUE,
                                         approximation = TRUE)
 
   list(actual    = y_test,
@@ -2752,8 +2744,8 @@ fit_arimax <- function(df, var_dep, n_train) {
 # pre-computed training set sizes from the preprocessing chunk.
 # ----------------------------------------------------------
 
-res_arimax_ara <- fit_arimax(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-res_arimax_rob <- fit_arimax(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+res_arimax_ara <- fit_arimax(df_arabica_levels, "arabica_price", n_train_ara_lev)
+res_arimax_rob <- fit_arimax(df_robusta_levels, "robusta_price", n_train_rob_lev)
 
 
 # ----------------------------------------------------------
@@ -2773,21 +2765,20 @@ metriques_arimax <- rbind(
 )
 ```
 
-The ARIMAX model delivers strong out-of-sample performance on both series. For Arabica, the model achieves an $R^2$ of 0.821, with an MSE of 0.029 and an MAE of 0.131 USD/lb, indicating that it captures the broad price dynamics well over the test period. For Robusta, performance is even higher, with an $R^2$ of 0.929, confirming that the autoregressive structure of the model — combined with the exogenous variables — explains the vast majority of price variation in the test window. The order $(p,d,q)$ selected by `auto.arima()` at each walk-forward step varied across iterations, reflecting the adaptive nature of the estimation procedure.
+The ARIMAX model delivers strong out-of-sample performance on both series. For Arabica, the model achieves an $R^2$ of 0.821, with an MSE of 0.029 and an MAE of 0.131 USD/lb, indicating that it captures the broad price dynamics well over the test period. For Robusta, performance is even higher, with an $R^2$ of 0.929, an MSE of 11,194 and an MAE of 88.7 USD/tonne, confirming that the autoregressive structure of the model, combined with the exogenous variables, explains the vast majority of price variation in the test window. The order $(p,d,q)$ selected by `auto.arima()` at each walk-forward step varied across iterations, reflecting the adaptive nature of the estimation procedure.
 
-```{r arimax_order}
+```{r arimax_order, include=FALSE}
 # Report the ARIMA order selected on the full training set
-# for each series — informative for methodological transparency.
-cat("Arabica — ARIMA order selected by auto.arima():\n")
+# for each series, for methodological transparency.
+cat("Arabica - ARIMA order selected by auto.arima():\n")
 print(res_arimax_ara$model)
-
-cat("\nRobusta — ARIMA order selected by auto.arima():\n")
+cat("\nRobusta - ARIMA order selected by auto.arima():\n")
 print(res_arimax_rob$model)
 ```
 
-On the full training set, `auto.arima()` selected a Regression with ARIMA(1,0,0) errors for Arabica and a Regression with ARIMA(3,0,1) errors for Robusta. The absence of differencing ($d = 0$) in both cases reflects the fact that the trending co-movement between prices and the exogenous regressors is absorbed by the regression component, leaving stationary residuals that require only autoregressive correction. The AR(1) coefficient of 0.967 for Arabica confirms the high degree of price persistence documented in the descriptive analysis. For Robusta, the more complex ARMA(3,1) error structure captures the additional short-run dynamics characteristic of this more volatile series.
+On the full training set, `auto.arima()` selected a Regression with ARIMA(1,0,0) errors for Arabica and a Regression with ARIMA(3,0,1) errors for Robusta. The absence of differencing ($d=0$) in both cases reflects the fact that the trending co-movement between prices and the exogenous regressors is absorbed by the regression component, leaving residuals that are modelled as a stationary autoregressive process. The AR(1) coefficient of 0.967 for Arabica confirms the high degree of price persistence documented in the descriptive analysis. For Robusta, the more complex ARMA(3,1) error structure captures the additional short-run dynamics characteristic of this more volatile series.
 
-The tables below report the regression coefficients of the exogenous regressors from the final ARIMAX model estimated on the full training set for each coffee variety. These coefficients reflect the static linear relationship between each predictor and the dependent price series, conditional on the autoregressive error structure selected by `auto.arima()`. Two important caveats apply to their interpretation. First, the coefficients are estimated on the training set only and do not incorporate the walk-forward updating that drives the out-of-sample forecasts — they should therefore be read as descriptive of the average relationship over the training period rather than as stable structural parameters. Second, the presence of high multicollinearity among the predictors — documented in the PCA analysis — implies that individual coefficient estimates and their standard errors may be unstable, and that statistical insignificance of a given regressor does not preclude its contribution to forecast accuracy when combined with other variables.
+The tables below report the regression coefficients of the exogenous regressors from the final ARIMAX model estimated on the full training set for each coffee variety. These coefficients reflect the static linear relationship between each predictor and the dependent price series, conditional on the autoregressive error structure selected by `auto.arima()`. Two important caveats apply to their interpretation. First, the coefficients are estimated on the training set only and do not incorporate the walk-forward updating that drives the out-of-sample forecasts; they should therefore be read as descriptive of the average relationship over the training period rather than as stable structural parameters. Second, the presence of high multicollinearity among the predictors, documented in the correlation and PCA analyses, implies that individual coefficient estimates and their standard errors may be unstable, and that statistical insignificance of a given regressor does not preclude its contribution to forecast accuracy when combined with other variables.
 
 ```{r arimax_coefficients, message=FALSE, warning=FALSE}
 
@@ -2850,11 +2841,11 @@ extraire_coefs_arimax(
 )
 ```
 
-The coefficient tables confirm and sharpen the picture that emerged from the variable importance analysis. For Arabica, only two regressors reach conventional significance thresholds on the full training set: Sugar No.11 prices ( $p$ \< 0.001) and WTI crude oil ( $p$ \< 0.01). The Sugar coefficient of 1.022 implies that a one-unit increase in the Sugar No.11 price is associated with an increase of approximately USD 1.02/lb in the Arabica futures price, reflecting the well-documented land substitution dynamic between the two crops in Brazil. The positive WTI coefficient is consistent with the energy cost channel documented in the literature. The remaining regressors — including the USDA fundamentals, climate indices and the COT net position — are individually insignificant in the static regression, despite contributing meaningfully to out-of-sample forecasting accuracy in the machine learning models. This apparent contradiction is explained by the high multicollinearity among predictors documented in the PCA analysis: individually insignificant regressors can collectively carry predictive information that the ensemble methods exploit through non-linear combinations.
+The coefficient tables confirm and sharpen the picture that emerged from the variable importance analysis. For Arabica, only two regressors reach conventional significance thresholds on the full training set: Sugar No.11 prices ($p < 0.001$) and WTI crude oil ($p < 0.01$). The Sugar coefficient of 1.022 implies that a one-unit increase in the Sugar No.11 price is associated with an increase of approximately USD 1.02/lb in the Arabica futures price. The positive WTI coefficient is consistent with the energy cost channel. The remaining regressors, including the USDA fundamentals, climate indices and the COT net position, are individually insignificant in the static regression, despite contributing meaningfully to out-of-sample forecasting accuracy in the machine learning models. This apparent contradiction may reflect the high multicollinearity among predictors documented in the correlation and PCA analyses: individually insignificant regressors can collectively carry predictive information that the ensemble methods exploit through non-linear combinations.
 
-For Robusta, CPI ( $p$ \< 0.01) and WTI ( $p$ \< 0.05) are significant, confirming the dominant role of macroeconomic conditions in this market. The COT net Managed Money position is highly significant ( $p$\< 0.001) with a positive coefficient of 0.003, indicating that each additional net long contract held by speculative funds is associated with a USD 0.003/tonne increase in the Robusta futures price — a small per-contract effect that becomes economically meaningful at the scale of tens of thousands of contracts documented in the descriptive analysis. The USDA fundamentals remain individually insignificant for Robusta as well, for the same multicollinearity reasons as Arabica.
+For Robusta, CPI ($p < 0.01$) and WTI ($p < 0.05$) are significant, confirming the dominant role of macroeconomic conditions in this market. The COT net Managed Money position is highly significant ($p < 0.001$) with a positive coefficient of 0.003, indicating that each additional net long contract held by speculative funds is associated with a USD 0.003/tonne increase in the Robusta futures price, a small per-contract effect that becomes economically meaningful at the scale of tens of thousands of contracts documented in the descriptive analysis. The USDA fundamentals remain individually insignificant for Robusta as well, for the same multicollinearity reasons as Arabica.
 
-The ACF and PACF plots below provide a formal visual diagnostic of the ARIMAX residuals for both series. Under correct model specification, the residuals should exhibit no systematic autocorrelation at any lag — that is, all spikes in both plots should fall within the blue dashed confidence bands (±1.96/√$T$ ). Significant spikes would indicate that the selected ARIMA error structure has failed to fully capture the temporal dynamics of the series, and that a higher-order specification might be warranted. The diagnostic is applied to the final model estimated on the full training set, which provides the largest available sample for assessing residual behaviour.
+The ACF and PACF plots below provide a formal visual diagnostic of the ARIMAX residuals for both series. Under correct model specification, the residuals should exhibit no systematic autocorrelation at any lag, that is, all spikes in both plots should fall within the blue dashed confidence bands ($\pm 1.96 / \sqrt{T}$). Significant spikes would indicate that the selected ARIMA error structure has failed to fully capture the temporal dynamics of the series, and that a higher-order specification might be warranted. The diagnostic is applied to the final model estimated on the full training set, which provides the largest available sample for assessing residual behaviour.
 
 ```{r arimax_residuals_diagnostics, message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
 
@@ -2889,14 +2880,13 @@ pacf(residuals(res_arimax_rob$model),
 par(mfrow = c(1, 1))
 ```
 
-The residual diagnostics reveal an asymmetry between the two series. For Robusta, both the ACF and PACF are clean throughout all 24 lags, with no spike exceeding the confidence bands. The $ARIMA(3,0,1)$ error structure has fully absorbed the short-run autocorrelation of the series.
+The residual diagnostics reveal an asymmetry between the two series. For Robusta, the ACF shows minor exceedances at lags 1 and 15, and the PACF shows a spike at lag 15. These isolated exceedances do not suggest a systematic pattern, and the ARIMA(3,0,1) error structure has absorbed the main short-run autocorrelation of the series.
 
-For Arabica, the picture is less satisfactory. The ACF shows significant spikes at lags 1, 5 and 6, and the PACF shows exceedances at lags 5, 8 and 10. This indicates that the $ARIMA(1,0,0)$ structure does not fully capture the medium-range autocorrelation dynamics of the Arabica residuals, and that a higher-order specification — for instance incorporating additional AR terms at lags 5 or 6 — could reduce this residual dependence. This limitation is acknowledged as a direction for future refinement, though it does not invalidate the out-of-sample forecasting results given the strong $R^2$ of 0.821 achieved under walk-forward validation.
-
+For Arabica, the picture is less satisfactory. The ACF shows significant spikes at lags 1, 2, 5, 6, 16 and 24, and the PACF shows exceedances at lags 1, 5, 8 and 10. This indicates that the ARIMA(1,0,0) structure does not fully capture the autocorrelation dynamics of the Arabica residuals, and that a higher-order specification, for instance incorporating additional AR terms at lags 5 or 6, could reduce this residual dependence. This limitation is acknowledged as a direction for future refinement, though it does not invalidate the out-of-sample forecasting results given the $R^2$ of 0.821 achieved under walk-forward validation.
 
 ## Random Forest
 
-This chunk estimates the Random Forest model for both series. The implementation follows the same walk-forward structure as MLR and ARIMAX above, with two differences specific to this model family: all variables, including the dependent variable, are Min-Max scaled to [0, 1] before estimation (see Section 3.5.3), and the forest is grown with 500 trees at each step with importance recording enabled. The variable importance scores from the final iteration of the loop are retained and used in the importance plot chunk later in the document.
+*This chunk estimates the Random Forest model for both series. The implementation follows the same walk-forward structure as MLR and ARIMAX above, with two differences specific to this model family: all variables, including the dependent variable, are Min-Max scaled to $[0, 1]$ before estimation, and the forest is grown with 500 trees at each step with importance recording enabled. The variable importance scores from the final iteration of the loop are retained and used in the importance plot chunk later in the document.*
 
 ```{r random_forest, message=FALSE, warning=FALSE}
 
@@ -2908,6 +2898,7 @@ library(randomForest)
 # Arguments:
 #   df      : levels dataset (one row per month)
 #   var_dep : name of the dependent variable column
+#             ("arabica_price" or "robusta_price")
 #   n_train : size of the initial training window (number of
 #             rows), computed earlier in the preprocessing chunk
 #
@@ -2930,8 +2921,8 @@ fit_rf <- function(df, var_dep, n_train) {
   # complete cases by preparer_niveaux() before reaching this
   # function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
-  vars_a_garder <- c(var_dep, vars_exo_disponibles)
-  df_modele <- df[, vars_a_garder]
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
 
   # STEP 2 — Min-Max scale every column (including the
   # dependent variable) to the [0, 1] range. sapply() applies
@@ -2958,7 +2949,7 @@ fit_rf <- function(df, var_dep, n_train) {
 
   for (i in 1:n_test) {
 
-    nb_lignes_test_vues <- i - 1
+    nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
 
@@ -2975,7 +2966,8 @@ fit_rf <- function(df, var_dep, n_train) {
   scores_importance <- importance(foret)
 
   valeurs_observees <- donnees_test[[var_dep]]
-  list(actual = valeurs_observees, predicted = predictions,
+  list(actual     = valeurs_observees,
+       predicted  = predictions,
        importance = scores_importance)
 }
 
@@ -2984,8 +2976,8 @@ fit_rf <- function(df, var_dep, n_train) {
 # ESTIMATION — ARABICA AND ROBUSTA
 # ----------------------------------------------------------
 
-res_rf_ara <- fit_rf(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-res_rf_rob <- fit_rf(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+res_rf_ara <- fit_rf(df_arabica_levels, "arabica_price", n_train_ara_lev)
+res_rf_rob <- fit_rf(df_robusta_levels, "robusta_price", n_train_rob_lev)
 
 
 # ----------------------------------------------------------
@@ -3000,12 +2992,11 @@ metriques_rf <- rbind(
 )
 ```
 
-The Random Forest model achieves an $R^2$ of 0.802 for Arabica and 0.701 for Robusta, with substantially lower MSE and MAE than the econometric benchmarks when evaluated on the same scale. The model's ensemble structure — averaging predictions across 500 decision trees — provides robustness to outliers and non-linear relationships that the linear benchmarks cannot capture. The walk-forward re-estimation at each step ensures that the model is never trained on future observations, mitigating overfitting concerns that would arise under standard cross-validation. Performance on Robusta is somewhat lower than on Arabica, consistent with the shorter and more volatile training sample available for this variety.
-
+The Random Forest model achieves an $R^2$ of 0.811 for Arabica and 0.695 for Robusta. The model's ensemble structure, averaging predictions across 500 decision trees, provides robustness to outliers and non-linear relationships that the linear benchmarks cannot capture. The walk-forward re-estimation at each step ensures that the model is never trained on future observations, mitigating overfitting concerns that would arise under standard cross-validation. Performance on Robusta is somewhat lower than on Arabica, consistent with the shorter and more volatile training sample available for this variety.
 
 ## XGBoost
 
-This chunk estimates the XGBoost model for both series. Unlike the MLR and Random Forest functions above, `xgboost()` requires a plain numeric matrix and a numeric vector as inputs rather than a data frame and a formula, so the walk-forward loop here slices a predictor matrix `X` and a target vector `y` directly by row index instead of building separate training/test data frames at each step. This is simply the standard way of calling `xgboost()`, not a difference in the underlying walk-forward logic.
+*This chunk estimates the XGBoost model for both series. Unlike the MLR and Random Forest functions above, `xgboost()` requires a plain numeric matrix and a numeric vector as inputs rather than a data frame and a formula, so the walk-forward loop here slices a predictor matrix `X` and a target vector `y` directly by row index instead of building separate training/test data frames at each step. This is simply the standard way of calling `xgboost()`, not a difference in the underlying walk-forward logic.*
 
 ```{r xgboost, message=FALSE, warning=FALSE}
 
@@ -3017,6 +3008,7 @@ library(xgboost)
 # Arguments:
 #   df      : levels dataset (one row per month)
 #   var_dep : name of the dependent variable column
+#             ("arabica_price" or "robusta_price")
 #   n_train : size of the initial training window (number of
 #             rows), computed earlier in the preprocessing chunk
 #
@@ -3048,8 +3040,8 @@ fit_xgb <- function(df, var_dep, n_train) {
   # filtered to complete cases by preparer_niveaux() before
   # reaching this function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
-  vars_a_garder <- c(var_dep, vars_exo_disponibles)
-  df_modele <- df[, vars_a_garder]
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
 
   # STEP 2 — Min-Max scale every column (including the
   # dependent variable) to the [0, 1] range.
@@ -3075,7 +3067,7 @@ fit_xgb <- function(df, var_dep, n_train) {
 
   for (i in 1:n_test) {
 
-    indices_fenetre <- 1:(n_train + i - 1)
+    indices_fenetre  <- 1:(n_train + i - 1)
     indice_a_predire <- n_train + i
 
     modele_xgb <- xgboost(data      = X[indices_fenetre, ],
@@ -3094,8 +3086,9 @@ fit_xgb <- function(df, var_dep, n_train) {
   # The observed test values are rows (n_train + 1) to n_total of y
   valeurs_observees <- y[(n_train + 1):n_total]
 
-  list(actual = valeurs_observees, predicted = predictions,
-       model  = modele_xgb)   # model from the last (largest) window
+  list(actual = valeurs_observees,
+       predicted = predictions,
+       model     = modele_xgb)
 }
 
 
@@ -3103,8 +3096,8 @@ fit_xgb <- function(df, var_dep, n_train) {
 # ESTIMATION — ARABICA AND ROBUSTA
 # ----------------------------------------------------------
 
-res_xgb_ara <- fit_xgb(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-res_xgb_rob <- fit_xgb(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+res_xgb_ara <- fit_xgb(df_arabica_levels, "arabica_price", n_train_ara_lev)
+res_xgb_rob <- fit_xgb(df_robusta_levels, "robusta_price", n_train_rob_lev)
 
 
 # ----------------------------------------------------------
@@ -3119,40 +3112,48 @@ metriques_xgb <- rbind(
 )
 ```
 
-XGBoost delivers the strongest out-of-sample performance among the ML models for both series, with an $R^2$ of 0.818 for Arabica and 0.796 for Robusta. These results are comparable to — and in the case of Arabica, marginally exceed — those of the ARIMAX benchmark, suggesting that the gradient boosting algorithm is able to identify non-linear interactions among the predictors that the linear ARIMAX structure cannot accommodate. The regularisation parameters built into the XGBoost objective function provide an additional safeguard against overfitting, complementing the walk-forward validation protocol.
+XGBoost delivers the strongest out-of-sample performance among the ML models for both series, with an $R^2$ of 0.818 for Arabica and 0.796 for Robusta. These results are comparable to those of the ARIMAX benchmark for Arabica, and competitive for Robusta, suggesting that the gradient boosting algorithm is able to identify non-linear interactions among the predictors that the linear ARIMAX structure cannot accommodate. The regularisation parameters built into the XGBoost objective function provide an additional safeguard against overfitting, complementing the walk-forward validation protocol.
 
 
 ## Support Vector Machine (SVM)
 
-This chunk estimates the Support Vector Machine model for both series using a radial basis function (RBF) kernel. The structure mirrors the MLR and Random Forest functions exactly. The two key hyperparameters — the regularisation parameter `cost` and the kernel width `gamma` — are set to fixed values without grid search, a simplification acknowledged in the results section as a likely source of the SVM's relatively weaker performance compared to the other ML models.
+*This chunk estimates the Support Vector Machine model for both series using a radial basis function (RBF) kernel. The structure mirrors the MLR and Random Forest functions exactly. The two key hyperparameters, the regularisation parameter `cost` and the kernel width `gamma`, are selected via a light grid search over a chronological 80/20 sub-split of the initial training window, then held fixed across all walk-forward steps*
 
 ```{r svm_tuning, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# LIGHT HYPERPARAMETER TUNING — SVM
+# A chronological 80/20 sub-split of the initial training
+# window is used to select the optimal cost and gamma values
+# from a small grid. The selected values are then held fixed
+# across all walk-forward steps in the estimation chunk below.
+# ----------------------------------------------------------
+
 tuner_svm <- function(df, var_dep, n_train) {
 
-  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
-  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
-  df_modele <- df_modele[complete.cases(df_modele), ]
-  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+  vars_exo_disponibles  <- intersect(vars_exo, colnames(df))
+  df_modele             <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele             <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled      <- as.data.frame(sapply(df_modele, minmax_scale))
 
   donnees_train_complet <- df_modele_scaled[1:n_train, ]
 
   n_sous_train <- floor(nrow(donnees_train_complet) * 0.8)
-  sous_train <- donnees_train_complet[1:n_sous_train, ]
-  sous_val   <- donnees_train_complet[(n_sous_train + 1):nrow(donnees_train_complet), ]
+  sous_train   <- donnees_train_complet[1:n_sous_train, ]
+  sous_val     <- donnees_train_complet[(n_sous_train + 1):nrow(donnees_train_complet), ]
 
   formule <- as.formula(paste(var_dep, "~ ."))
 
-  grille <- expand.grid(cost  = c(0.5, 1, 2, 5),
-                        gamma = c(0.05, 0.1, 0.2))
-
+  grille         <- expand.grid(cost  = c(0.5, 1, 2, 5),
+                                gamma = c(0.05, 0.1, 0.2))
   grille$mse_val <- NA_real_
 
   for (i in seq_len(nrow(grille))) {
-    modele_essai <- svm(formule, data = sous_train,
-                        kernel = "radial",
-                        cost   = grille$cost[i],
-                        gamma  = grille$gamma[i])
-    preds_val <- predict(modele_essai, newdata = sous_val)
+    modele_essai      <- svm(formule, data = sous_train,
+                             kernel = "radial",
+                             cost   = grille$cost[i],
+                             gamma  = grille$gamma[i])
+    preds_val         <- predict(modele_essai, newdata = sous_val)
     grille$mse_val[i] <- mean((sous_val[[var_dep]] - preds_val)^2)
   }
 
@@ -3161,15 +3162,16 @@ tuner_svm <- function(df, var_dep, n_train) {
        grille = grille)
 }
 
-tuning_svm_ara <- tuner_svm(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-tuning_svm_rob <- tuner_svm(df_robusta_levels, "prix_robusta", n_train_rob_lev)
+tuning_svm_ara <- tuner_svm(df_arabica_levels, "arabica_price", n_train_ara_lev)
+tuning_svm_rob <- tuner_svm(df_robusta_levels, "robusta_price", n_train_rob_lev)
 
-cat("SVM — Arabica selected: cost =", tuning_svm_ara$cost,
+cat("SVM - Arabica selected: cost =", tuning_svm_ara$cost,
     ", gamma =", tuning_svm_ara$gamma, "\n")
-cat("SVM — Robusta selected: cost =", tuning_svm_rob$cost,
+cat("SVM - Robusta selected: cost =", tuning_svm_rob$cost,
     ", gamma =", tuning_svm_rob$gamma, "\n")
 ```
 
+*The selected hyperparameters are passed directly to the estimation function below, which follows the same walk-forward expanding window structure as all other models.*
 
 ```{r svm, message=FALSE, warning=FALSE}
 
@@ -3181,10 +3183,11 @@ library(e1071)
 # Arguments:
 #   df      : levels dataset (one row per month)
 #   var_dep : name of the dependent variable column
+#             ("arabica_price" or "robusta_price")
 #   n_train : size of the initial training window (number of
 #             rows), computed earlier in the preprocessing chunk
-#   cost, gamma : hyperparameters selected by the light tuning
-#             search above, passed in rather than hard-coded
+#   cost, gamma : hyperparameters selected by the tuning chunk
+#             above, passed in rather than hard-coded
 #
 # What the function returns:
 #   actual    : the observed (scaled) prices in the test period
@@ -3196,10 +3199,7 @@ library(e1071)
 #   feature space, allowing the SVM to capture non-linear
 #   relationships between predictors and price levels.
 #
-# Hyperparameters: cost (regularisation) and gamma (kernel
-# bandwidth) are passed in as arguments rather than hard-coded,
-# so that the values selected by the tuning search above are
-# used directly. cost controls the trade-off between margin
+# Hyperparameters: cost controls the trade-off between margin
 # width and training error; gamma determines how far the
 # influence of a single training point reaches.
 # ----------------------------------------------------------
@@ -3211,8 +3211,8 @@ fit_svm <- function(df, var_dep, n_train, cost = 1, gamma = 0.1) {
   # filtered to complete cases by preparer_niveaux() before
   # reaching this function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
-  vars_a_garder <- c(var_dep, vars_exo_disponibles)
-  df_modele <- df[, vars_a_garder]
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
 
   # STEP 2 — Min-Max scale every column (including the
   # dependent variable) to the [0, 1] range.
@@ -3230,14 +3230,14 @@ fit_svm <- function(df, var_dep, n_train, cost = 1, gamma = 0.1) {
   # scratch on the initial training set plus all test rows
   # already passed, and a single prediction is generated for
   # the current test observation. cost and gamma are held
-  # fixed at the values selected by the pre-loop tuning search
+  # fixed at the values selected by the tuning chunk above
   # for every step of the loop.
   predictions <- numeric(n_test)
   formule     <- as.formula(paste(var_dep, "~ ."))
 
   for (i in 1:n_test) {
 
-    nb_lignes_test_vues <- i - 1
+    nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
 
@@ -3256,12 +3256,12 @@ fit_svm <- function(df, var_dep, n_train, cost = 1, gamma = 0.1) {
 # ----------------------------------------------------------
 # ESTIMATION — ARABICA AND ROBUSTA
 # Uses the cost and gamma values selected by the tuning
-# search above, separately for each series.
+# chunk above, separately for each series.
 # ----------------------------------------------------------
 
-res_svm_ara <- fit_svm(df_arabica_levels, "prix_arabica", n_train_ara_lev,
+res_svm_ara <- fit_svm(df_arabica_levels, "arabica_price", n_train_ara_lev,
                        cost = tuning_svm_ara$cost, gamma = tuning_svm_ara$gamma)
-res_svm_rob <- fit_svm(df_robusta_levels, "prix_robusta", n_train_rob_lev,
+res_svm_rob <- fit_svm(df_robusta_levels, "robusta_price", n_train_rob_lev,
                        cost = tuning_svm_rob$cost, gamma = tuning_svm_rob$gamma)
 
 
@@ -3277,44 +3277,55 @@ metriques_svm <- rbind(
 )
 ```
 
-The SVM with a radial basis function kernel and tuned hyperparameters delivers a markedly improved out of sample performance relative to earlier untuned specifications. The light grid search selects $cost = 5$ and $gamma = 0.05$ for both Arabica and Robusta, the combination minimising validation MSE within the chronological sub split of each initial training window. With these tuned hyperparameters, the SVM achieves an out of sample $R^2$ of 0.813 for Arabica and 0.723 for Robusta, a substantial improvement over the untuned fixed values of $cost = 1$ and $gamma = 0.1$ used in earlier specifications, and now comparable to or exceeding several of the other ML models for both series. This improvement confirms that the SVM's earlier underperformance was indeed driven in large part by the arbitrary choice of hyperparameters rather than by a fundamental limitation of the kernel based approach for this forecasting problem. The single pre loop tuning search remains a simplification relative to a fully nested walk forward procedure, which would re optimise the hyperparameters at every step but was computationally prohibitive given the sample size and the six model comparative framework of this study.
-
+The SVM with a radial basis function kernel and tuned hyperparameters delivers strong out-of-sample performance. The light grid search selects $cost=5$ and $gamma=0.05$ for both Arabica and Robusta, the combination minimising validation MSE within the chronological 80/20 sub-split of each initial training window. With these tuned hyperparameters, the SVM achieves an out-of-sample $R^2$ of 0.813 for Arabica and 0.723 for Robusta, comparable to or exceeding several of the other ML models for both series. The single pre-loop tuning search remains a simplification relative to a fully nested walk-forward procedure, which would re-optimise the hyperparameters at every step but was computationally prohibitive given the sample size and the six-model comparative framework of this study.
 
 ## Artificial Neural Network (ANN)
 
-This chunk estimates the Artificial Neural Network model for both series using the `nnet` package, which implements a single hidden layer feedforward network trained by backpropagation. The architecture and training parameters are kept deliberately modest to limit overfitting on the available training samples, which reach a maximum of approximately 200 observations at the end of the walk-forward loop.
+*This chunk estimates the Artificial Neural Network model for both series using the `nnet` package, which implements a single hidden layer feedforward network trained by backpropagation. The number of hidden neurons is selected via a light grid search over candidate sizes of 3, 5, 8 and 10, using the same chronological sub-split of the initial training window as the SVM tuning procedure.*
 
 ```{r ann_tuning, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# LIGHT HYPERPARAMETER TUNING — ANN
+# A chronological 80/20 sub-split of the initial training
+# window is used to select the optimal number of hidden neurons
+# from a small grid. The selected size is then held fixed
+# across all walk-forward steps in the estimation chunk below.
+# ----------------------------------------------------------
+
 tuner_ann <- function(df, var_dep, n_train) {
-  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
-  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
-  df_modele <- df_modele[complete.cases(df_modele), ]
-  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+  vars_exo_disponibles  <- intersect(vars_exo, colnames(df))
+  df_modele             <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele             <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled      <- as.data.frame(sapply(df_modele, minmax_scale))
   donnees_train_complet <- df_modele_scaled[1:n_train, ]
-  n_sous_train <- floor(nrow(donnees_train_complet) * 0.8)
-  sous_train <- donnees_train_complet[1:n_sous_train, ]
-  sous_val   <- donnees_train_complet[(n_sous_train + 1):nrow(donnees_train_complet), ]
-  formule <- as.formula(paste(var_dep, "~ ."))
-  tailles_candidates <- c(3, 5, 8, 10)
-  mse_val <- numeric(length(tailles_candidates))
+  n_sous_train          <- floor(nrow(donnees_train_complet) * 0.8)
+  sous_train            <- donnees_train_complet[1:n_sous_train, ]
+  sous_val              <- donnees_train_complet[(n_sous_train + 1):nrow(donnees_train_complet), ]
+  formule               <- as.formula(paste(var_dep, "~ ."))
+  tailles_candidates    <- c(3, 5, 8, 10)
+  mse_val               <- numeric(length(tailles_candidates))
   for (i in seq_along(tailles_candidates)) {
     set.seed(42)
     modele_essai <- nnet(formule, data = sous_train,
-                         size = tailles_candidates[i],
+                         size   = tailles_candidates[i],
                          linout = TRUE, maxit = 500, trace = FALSE)
-    preds_val <- predict(modele_essai, newdata = sous_val)
-    mse_val[i] <- mean((sous_val[[var_dep]] - preds_val)^2)
+    preds_val    <- predict(modele_essai, newdata = sous_val)
+    mse_val[i]   <- mean((sous_val[[var_dep]] - preds_val)^2)
   }
   meilleure_taille <- tailles_candidates[which.min(mse_val)]
-  list(size = meilleure_taille,
+  list(size   = meilleure_taille,
        grille = data.frame(size = tailles_candidates, mse_val = mse_val))
 }
-tuning_ann_ara <- tuner_ann(df_arabica_levels, "prix_arabica", n_train_ara_lev)
-tuning_ann_rob <- tuner_ann(df_robusta_levels, "prix_robusta", n_train_rob_lev)
-cat("ANN — Arabica selected size:", tuning_ann_ara$size, "\n")
-cat("ANN — Robusta selected size:", tuning_ann_rob$size, "\n")
+
+tuning_ann_ara <- tuner_ann(df_arabica_levels, "arabica_price", n_train_ara_lev)
+tuning_ann_rob <- tuner_ann(df_robusta_levels, "robusta_price", n_train_rob_lev)
+
+cat("ANN - Arabica selected size:", tuning_ann_ara$size, "\n")
+cat("ANN - Robusta selected size:", tuning_ann_rob$size, "\n")
 ```
 
+*The selected architecture is passed directly to the estimation function below, which follows the same walk-forward expanding window structure as all other models.*
 
 ```{r ann, message=FALSE, warning=FALSE}
 
@@ -3326,6 +3337,7 @@ library(nnet)
 # Arguments:
 #   df      : levels dataset (one row per month)
 #   var_dep : name of the dependent variable column
+#             ("arabica_price" or "robusta_price")
 #   n_train : size of the initial training window (number of
 #             rows), computed earlier in the preprocessing chunk
 #
@@ -3334,12 +3346,7 @@ library(nnet)
 #   predicted : the walk-forward one-step-ahead forecasts
 #
 # Architecture: one hidden layer with `size` neurons.
-#   size   = 5    : number of hidden neurons. With 14 input
-#                   variables, a layer of 5 neurons yields
-#                   14x5 + 5x1 = 75 connection weights to
-#                   estimate, a manageable number relative to
-#                   the ~170-200 training observations available
-#                   at each walk-forward step.
+#   size   : selected by the tuning chunk above
 #   linout = TRUE : linear (identity) activation on the output
 #                   neuron, required for regression targets.
 #                   Without this, nnet applies a logistic
@@ -3366,8 +3373,8 @@ fit_ann <- function(df, var_dep, n_train, size = 5) {
   # filtered to complete cases by preparer_niveaux() before
   # reaching this function.
   vars_exo_disponibles <- intersect(vars_exo, colnames(df))
-  vars_a_garder <- c(var_dep, vars_exo_disponibles)
-  df_modele <- df[, vars_a_garder]
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
 
   # STEP 2 — Min-Max scale every column (including the
   # dependent variable) to the [0, 1] range.
@@ -3393,7 +3400,7 @@ fit_ann <- function(df, var_dep, n_train, size = 5) {
 
   for (i in 1:n_test) {
 
-    nb_lignes_test_vues <- i - 1
+    nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
 
@@ -3416,9 +3423,9 @@ fit_ann <- function(df, var_dep, n_train, size = 5) {
 # ESTIMATION — ARABICA AND ROBUSTA
 # ----------------------------------------------------------
 
-res_ann_ara <- fit_ann(df_arabica_levels, "prix_arabica", n_train_ara_lev,
+res_ann_ara <- fit_ann(df_arabica_levels, "arabica_price", n_train_ara_lev,
                        size = tuning_ann_ara$size)
-res_ann_rob <- fit_ann(df_robusta_levels, "prix_robusta", n_train_rob_lev,
+res_ann_rob <- fit_ann(df_robusta_levels, "robusta_price", n_train_rob_lev,
                        size = tuning_ann_rob$size)
 
 
@@ -3434,12 +3441,12 @@ metriques_ann <- rbind(
 )
 ```
 
-The light tuning search selects a hidden layer of 5 neurons for Arabica and 3 neurons for Robusta, the architecture minimising validation MSE within the chronological sub split of each initial training window. With these tuned architectures, the ANN achieves an out of sample $R^2$ of 0.453 for Arabica and 0.441 for Robusta. For Arabica, the selected size of 5 coincides with the value used in earlier untuned specifications, so the tuning search confirms rather than changes the architecture, and the result is identical to before. For Robusta, the tuning search selects a smaller network of 3 neurons, which performs marginally worse out of sample (0.441) than the untuned 5 neuron specification estimated earlier (0.668). This outcome illustrates a genuine limitation of the single split validation approach: the architecture that minimises error on the validation portion of the training window does not necessarily generalise best to the separate test period, particularly with a network this small and a validation sample of limited size. Rather than discarding the tuning result in favour of the better performing untuned alternative, which would amount to selecting hyperparameters based on test set performance and would violate the walk forward validation protocol, the tuned size is retained as the methodologically consistent choice. This result is fully reproducible across repeated executions of the chunk, confirming that the fixed seed eliminates run to run variability and that the outcome reflects the architecture and validation procedure itself rather than random initialisation noise. The reduced capacity of the 3 neuron Robusta network, combined with the absence of explicit regularisation, leaves the model susceptible to converging on a comparatively poor solution within the limited number of backpropagation iterations, an outcome consistent with the known sensitivity of small feedforward networks to both architecture and weight initialisation.
+The light tuning search selects a hidden layer of 5 neurons for Arabica and 3 neurons for Robusta, the architecture minimising validation MSE within the chronological sub-split of each initial training window. With these tuned architectures, the ANN achieves an out-of-sample $R^2$ of 0.453 for Arabica and 0.441 for Robusta. For Robusta, the 3-neuron architecture selected by the tuning search performs relatively poorly out-of-sample. This outcome illustrates a genuine limitation of the single-split validation approach: the architecture that minimises error on the validation portion of the training window does not necessarily generalise best to the separate test period, particularly with a network this small and a validation sample of limited size. Rather than discarding the tuning result in favour of an alternative, which would amount to selecting hyperparameters based on test set performance and would violate the walk-forward validation protocol, the tuned size is retained as the methodologically consistent choice. This result is fully reproducible across repeated executions of the chunk, confirming that the fixed seed eliminates run-to-run variability and that the outcome reflects the architecture and validation procedure itself rather than random initialisation noise. The reduced capacity of the 3-neuron Robusta network, combined with the absence of explicit regularisation, leaves the model susceptible to converging on a comparatively poor solution within the limited number of backpropagation iterations, an outcome consistent with the known sensitivity of small feedforward networks to both architecture and weight initialisation.
 
 
 ## Comparative Performance Analysis
 
-This chunk consolidates the six individual metric data frames into a single comparison table and produces the summary bar chart. The metric columns are coerced to numeric here because `cbind()` in the individual model chunks stores them as character strings when binding with the Model and Series label columns. Two separate tables are rendered — one per coffee variety — to keep each readable, followed by a grouped bar chart that allows visual comparison of R² across all model-variety combinations simultaneously.
+*This chunk consolidates the six individual metric data frames into a single comparison table and produces the summary bar chart. The metric columns are coerced to numeric here because `cbind()` in the individual model chunks stores them as character strings when binding with the Model and Series label columns. Two separate tables are rendered, one per coffee variety, to keep each readable, followed by a grouped bar chart that allows visual comparison of $R^2$ across all model-variety combinations simultaneously.*
 
 ```{r comparative_performance, message=FALSE, warning=FALSE}
 
@@ -3460,70 +3467,95 @@ metriques_all <- bind_rows(
 
 
 # ----------------------------------------------------------
-# STEP 2 — SEPARATE PERFORMANCE TABLES BY SERIES
-# The Series column is dropped from each table since it is
-# captured in the caption. Models appear in estimation order
-# (MLR, ARIMAX, RF, XGBoost, SVM, ANN), placing the two
-# econometric benchmarks first for ease of comparison.
-#
-# Note on metric comparability: ARIMAX and MLR operate on
-# original price levels (USD/lb for Arabica, USD/tonne for
-# Robusta), while RF, XGBoost, SVM and ANN operate on
-# Min-Max scaled data in [0, 1]. MSE and MAE values are
-# therefore not directly comparable across the two groups;
-# R² is scale-invariant and provides the cleanest basis for
-# cross-model comparison.
+# STEP 2 — SINGLE PERFORMANCE TABLE (ARABICA AND ROBUSTA)
+# Models are sorted by decreasing R² within each series.
+# The Series column is dropped before kable() to avoid
+# conflict between collapse_rows() and pack_rows().
+# MSE and MAE are rounded adaptively: large values (ARIMAX
+# and MLR in original price units) are rounded to the nearest
+# integer with a thousands separator; small values (ML models
+# on the [0, 1] scaled range) retain four decimal places.
+# pack_rows() adds colour-coded group headers for each series,
+# making the Arabica / Robusta separation immediately visible.
+# A footnote warns the reader that MSE and MAE are not
+# directly comparable across the two model groups.
 # ----------------------------------------------------------
 
-kable(metriques_all %>% filter(Series == "Arabica") %>% select(-Series),
-      caption   = "Comparative model performance — Arabica futures (out-of-sample)",
-      booktabs  = TRUE,
-      col.names = c("Model", "R²", "MSE", "MAE")) %>%
+metriques_all %>%
+  arrange(Series, desc(R2)) %>%
+  mutate(
+    MSE = ifelse(MSE > 100,
+                 format(round(MSE, 0), big.mark = ",", scientific = FALSE),
+                 as.character(round(MSE, 4))),
+    MAE = ifelse(MAE > 10,
+                 format(round(MAE, 1), scientific = FALSE),
+                 as.character(round(MAE, 4)))
+  ) %>%
+  select(Model, R2, MSE, MAE) %>%
+  kable(caption   = "Comparative model performance — out-of-sample results",
+        booktabs  = TRUE,
+        col.names = c("Model", "R²", "MSE", "MAE")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE)
-
-kable(metriques_all %>% filter(Series == "Robusta") %>% select(-Series),
-      caption   = "Comparative model performance — Robusta futures (out-of-sample)",
-      booktabs  = TRUE,
-      col.names = c("Model", "R²", "MSE", "MAE")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE)
+                font_size = 11, full_width = FALSE) %>%
+  row_spec(6, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 6,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 7, 12,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec") %>%
+  footnote(general           = "MSE and MAE for ARIMAX and MLR are in original price units (USD/lb for Arabica, USD/tonne for Robusta). MSE and MAE for RF, XGBoost, SVM and ANN are on the Min-Max scaled [0, 1] range and are not directly comparable.",
+           general_title     = "Note:",
+           footnote_as_chunk = TRUE)
 
 
 # ----------------------------------------------------------
 # STEP 3 — COMPARATIVE R² BAR CHART
-# A grouped bar chart (position = "dodge") places Arabica
-# and Robusta bars side by side for each model, making it
-# easy to compare both within-model (Arabica vs Robusta)
-# and across-model (ARIMAX vs XGBoost, etc.) performance.
-# R² is chosen as the axis variable because it is the only
-# metric that is directly comparable across all six models
-# regardless of whether they operate on scaled or unscaled
-# data. expression(R^2) renders the superscript correctly
-# in the axis label.
+# Models are ordered by decreasing average R² across both
+# series to place the strongest performers on the left.
+# R² labels are displayed above each bar for readability.
+# A dashed reference line at R² = 0.75 provides a visual
+# benchmark distinguishing strong from weaker performers.
 # ----------------------------------------------------------
 
-ggplot(metriques_all, aes(x = Model, y = R2, fill = Series)) +
-  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+metriques_all %>%
+  mutate(Model = factor(Model,
+                        levels = c("ARIMAX", "XGBoost", "SVM",
+                                   "Random Forest", "MLR", "ANN"))) %>%
+  ggplot(aes(x = Model, y = R2, fill = Series)) +
+  geom_bar(stat = "identity", position = "dodge",
+           alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = round(R2, 3)),
+            position = position_dodge(width = 0.7),
+            vjust = -0.4, size = 3, fontface = "bold") +
+  geom_hline(yintercept = 0.75, linetype = "dashed",
+             color = "grey40", linewidth = 0.5) +
   scale_fill_manual(values = c("Arabica" = "#8B4513",
                                "Robusta" = "#2E8B57")) +
-  labs(title = "Out-of-sample R² by model and coffee variety",
+  scale_y_continuous(limits = c(0, 1.02),
+                     breaks = seq(0, 1, 0.25)) +
+  labs(title    = "Out-of-sample R² by model and coffee variety",
+       subtitle = "Dashed line at R² = 0.75",
        x = NULL, y = expression(R^2), fill = NULL) +
   theme_minimal(base_size = 11) +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+  theme(axis.text.x        = element_text(angle = 25, hjust = 1),
+        legend.position    = "top",
+        panel.grid.major.x = element_blank())
 ```
 
-The comparative results are summarised in the tables and chart above. The ARIMAX model emerges as the strongest single model for Robusta ($R^2$ =0.929) and remains highly competitive for Arabica ($R^2$ =0.821), confirming that the autoregressive structure of price dynamics is a powerful predictor. XGBoost matches or exceeds ARIMAX for Arabica and performs well for Robusta, consistent with its strong track record in commodity price forecasting. The MLR benchmark performs remarkably well for Arabica but fails for Robusta, highlighting the importance of temporal dynamics in the shorter Robusta sample. The ANN and Random Forest deliver solid and consistent results across both varieties, while the SVM is the weakest ML model under the current hyperparameter configuration.
+The comparative results are summarised in the tables and chart above. The ARIMAX model emerges as the strongest single model for Robusta ($R^2 = 0.929$) and remains highly competitive for Arabica ($R^2 = 0.821$), confirming that the autoregressive structure of price dynamics is a powerful predictor. XGBoost is the strongest ML model for both varieties ($R^2 = 0.818$ for Arabica, 0.796 for Robusta), closely followed by SVM and Random Forest. The MLR benchmark performs well for Arabica but fails for Robusta, highlighting the importance of temporal dynamics in the shorter Robusta sample. The ANN produces the weakest results across both varieties, for the reasons discussed in the preceding section.
 
-The walk-forward validation protocol used throughout ensures that all reported metrics reflect genuine out-of-sample forecasting ability. Because the training window expands by one observation at each step and the model is re-estimated before each forecast, there is no possibility of data leakage between the training and test periods. The consistent performance of multiple models across both series — with $R^2$ values generally above 0.75 — suggests that the predictor set constructed in this study captures meaningful information about the drivers of coffee futures prices.
+The walk-forward validation protocol ensures that all reported metrics reflect genuine out-of-sample forecasting ability, with no possibility of data leakage between the training and test periods. With the exception of the ANN, $R^2$ values remain above 0.75 across all model-variety combinations, suggesting that the predictor set constructed in this study captures meaningful information about the drivers of coffee futures prices.
 
 ### Variable Importance and Partial Dependence Plots
 
 The variable importance plot from the Random Forest model provides an indication of which predictors contribute most to forecast accuracy, measured by the percentage increase in MSE when each variable is randomly permuted while holding all others fixed.
 
-The importance scores were recorded at the final walk-forward iteration — the largest training window — and stored in the `importance` element of `res_rf_ara` and `res_rf_rob`. Internal variable names are recoded to the same display labels used in the correlation matrix and PCA plots for visual consistency. Bars are sorted in descending order of `%IncMSE` so that the most influential predictor appears at the top of each chart after the axis flip.
+*The importance scores were recorded at the final walk-forward iteration, corresponding to the largest training window, and stored in the `importance` element of `res_rf_ara` and `res_rf_rob`. Internal variable names are recoded to the same display labels used in the correlation matrix and PCA plots for visual consistency. Bars are sorted in descending order of `%IncMSE` so that the most influential predictor appears at the top of each chart after the axis flip.*
 
-```{r variable_importance, message=FALSE, warning=FALSE}
+```{r variable_importance, message=FALSE, warning=FALSE, fig.width=9, fig.height=5}
 
 library(tibble)
 
@@ -3553,23 +3585,21 @@ imp_rob <- as.data.frame(res_rf_rob$importance) %>%
 # the same English display labels used in the correlation
 # matrix and PCA plots, ensuring visual consistency across
 # all figures in the document.
-# recode() with the !!!labels_vi splice operator applies the
-# named character vector as a lookup table in a single call.
 # ----------------------------------------------------------
 
 labels_vi <- c(
   "cot_net_mm"     = "COT net MM",
-  "prix_sucre"     = "Sugar",
+  "sugar_price"    = "Sugar",
   "ending_stocks"  = "Ending stocks",
   "wti"            = "WTI",
   "cpi"            = "CPI",
   "oni"            = "ONI",
   "fed_funds_rate" = "Fed Funds Rate",
   "production"     = "Production",
-  "prix_cacao"     = "Cocoa",
-  "exportations"   = "Exports",
+  "cocoa_price"    = "Cocoa",
+  "exports"        = "Exports",
   "dxy"            = "DXY",
-  "consommation"   = "Consumption",
+  "consumption"    = "Consumption",
   "indice_temp"    = "Temperature",
   "indice_precip"  = "Precipitation"
 )
@@ -3582,42 +3612,63 @@ imp_rob <- imp_rob %>% mutate(Variable = recode(Variable, !!!labels_vi))
 # STEP 3 — HORIZONTAL BAR CHARTS
 # reorder(Variable, `%IncMSE`) sorts bars from least to most
 # important along the y-axis; coord_flip() rotates the chart
-# so that the most important variable appears at the top,
-# which is the conventional orientation for importance plots.
-# Separate colour themes match the Arabica/Robusta palette
-# used consistently throughout the document.
+# so that the most important variable appears at the top.
+# geom_text() adds the exact %IncMSE value at the end of
+# each bar. panel.grid.major.y removes horizontal grid lines
+# that would otherwise clutter the flipped chart.
 # ----------------------------------------------------------
 
 # Arabica importance plot
-ggplot(imp_ara, aes(x = reorder(Variable, `%IncMSE`), y = `%IncMSE`)) +
-  geom_bar(stat = "identity", fill = "#8B4513", alpha = 0.8) +
+ggplot(imp_ara, aes(x = reorder(Variable, `%IncMSE`),
+                    y = `%IncMSE`)) +
+  geom_bar(stat = "identity", fill = "#8B4513", alpha = 0.85,
+           width = 0.7) +
+  geom_text(aes(label = round(`%IncMSE`, 1)),
+            hjust = -0.2, size = 3, color = "grey30") +
+  geom_hline(yintercept = 0, color = "grey40", linewidth = 0.4) +
   coord_flip() +
-  labs(title    = "Variable importance — Random Forest (Arabica)",
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Variable importance - Random Forest (Arabica)",
        subtitle = "% increase in MSE when variable is permuted",
        x = NULL, y = "% Inc MSE") +
-  theme_minimal(base_size = 11)
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor   = element_blank(),
+        plot.title         = element_text(face = "bold"),
+        axis.text.y        = element_text(size = 10, color = "grey20"))
+
 
 # Robusta importance plot
-ggplot(imp_rob, aes(x = reorder(Variable, `%IncMSE`), y = `%IncMSE`)) +
-  geom_bar(stat = "identity", fill = "#2E8B57", alpha = 0.8) +
+ggplot(imp_rob, aes(x = reorder(Variable, `%IncMSE`),
+                    y = `%IncMSE`)) +
+  geom_bar(stat = "identity", fill = "#2E8B57", alpha = 0.85,
+           width = 0.7) +
+  geom_text(aes(label = round(`%IncMSE`, 1)),
+            hjust = -0.2, size = 3, color = "grey30") +
+  geom_hline(yintercept = 0, color = "grey40", linewidth = 0.4) +
   coord_flip() +
-  labs(title    = "Variable importance — Random Forest (Robusta)",
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title    = "Variable importance - Random Forest (Robusta)",
        subtitle = "% increase in MSE when variable is permuted",
        x = NULL, y = "% Inc MSE") +
-  theme_minimal(base_size = 11)
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor   = element_blank(),
+        plot.title         = element_text(face = "bold"),
+        axis.text.y        = element_text(size = 10, color = "grey20"))
 ```
 
 The variable importance plots reveal distinct predictor hierarchies across the two coffee varieties, while also highlighting a set of common drivers that transcend the specificities of each market.
 
-For Arabica, the COT net Managed Money position and Sugar No.11 prices emerge as the two most influential predictors, each contributing approximately 25% increase in MSE when permuted — a margin well above all other variables. This result carries two distinct interpretations. The dominance of COT net MM reflects the progressive financialisation of the Arabica market: the Coffee C contract is the most liquid agricultural futures contract on ICE Futures U.S., and the positioning of speculative funds has been shown to both anticipate and amplify price movements. The prominence of Sugar prices, by contrast, likely captures the supply-side substitution dynamic specific to Brazil: land allocated between coffee and sugar cultivation in Minas Gerais and São Paulo responds to relative price signals, creating a structural co-movement between the two markets that the Random Forest is able to exploit. Ending stocks rank third (\~21% Inc MSE), confirming the theoretical prediction that inventory levels are a primary determinant of commodity prices under the theory of storage. WTI and CPI follow at approximately 18% and 17% respectively, reflecting the energy cost and broad inflation environment. The ONI and Fed Funds Rate contribute meaningfully (\~16% and \~15%), while the USDA fundamentals variables — Production, Exports, Consumption — occupy the middle range, likely penalised by their high mutual collinearity documented in the PCA. Temperature and Precipitation rank last with less than 4% increase in MSE each, suggesting that their influence on Arabica prices at monthly frequency is either lagged, non-linear in ways not captured by the permutation metric, or mediated through the production and ending stocks variables already present in the model.
+**For Arabica**, Sugar No.11 prices and the COT net Managed Money position emerge as the two most influential predictors, contributing approximately 27% and 24% increase in MSE respectively when permuted, well above all other variables. Ending stocks rank third (approximately 20% Inc MSE), consistent with the theoretical role of inventory levels as a primary determinant of commodity prices. WTI and ONI follow at approximately 18% and 17%, with CPI and the Fed Funds Rate contributing approximately 16% and 15% respectively. The USDA fundamentals variables, Production, Exports and Consumption, occupy the middle range, likely penalised by their high mutual collinearity documented in the correlation and PCA analyses. Temperature and Precipitation rank last, contributing approximately 6% and 3% Inc MSE respectively, suggesting that their influence on Arabica prices at monthly frequency is either lagged beyond the one-step-ahead horizon or mediated through the supply and inventory variables already present in the model.
 
-For Robusta, the importance hierarchy is markedly different in its upper ranks but converges toward a similar structure in the middle and lower tiers. WTI and CPI are the two dominant predictors (\~25% and \~23% Inc MSE respectively), displacing the financial and market-specific variables that led the Arabica ranking. This inversion reflects structural features of the Robusta supply chain: the two principal producing countries, Vietnam and Indonesia, are both major energy importers whose production and export costs are closely tied to global oil prices, making WTI a more direct cost-side driver for Robusta than for Arabica. The prominent role of CPI is consistent with the fact that Robusta is primarily consumed as soluble coffee and in price-sensitive blends — segments where demand is more elastic to the general price level. COT net MM and Ending stocks rank third and fourth (\~18% each), indicating that speculative positioning and inventory dynamics remain relevant drivers even for Robusta, where the LIFFE contract is less traded than ICE Coffee C. Cocoa (\~17%) and Production (\~16%) follow closely, while Sugar and ONI register at approximately 16% each — a notably higher contribution for ONI than in the Arabica model, consistent with the documented sensitivity of Vietnamese and Indonesian production to ENSO-driven rainfall variability. As with Arabica, Temperature and Precipitation rank last, with slightly higher values (\~7% and \~4%) that may reflect the more direct sensitivity of Vietnamese Robusta cultivation — grown at lower altitudes and with less shade cover than Arabica — to temperature and moisture anomalies.
+**For Robusta**, the importance hierarchy differs markedly in its upper ranks. WTI and CPI are the two dominant predictors (approximately 25% and 22% Inc MSE respectively), displacing the financial and market-specific variables that led the Arabica ranking. COT net MM ranks third (approximately 19%), followed by Cocoa (approximately 18%) and Ending stocks (approximately 18%). Production, ONI and DXY contribute between 15% and 16%, while Sugar and the Fed Funds Rate follow closely at approximately 15% and 14%. Temperature and Precipitation rank last at approximately 8% and 6% respectively, somewhat higher than their Arabica counterparts, which may reflect the greater sensitivity of low-altitude Robusta cultivation to temperature and moisture anomalies. As with Arabica, the ICE Futures Europe contract for Robusta is less actively traded than ICE Coffee C, which may explain the somewhat lower importance of COT net MM relative to the Arabica specification.
 
-Across both varieties, financial and macroeconomic variables systematically outrank supply-side fundamentals and climate variables in terms of predictive contribution at monthly frequency, suggesting that short-run price dynamics are dominated by financial flows rather than physical supply-demand balances. The climate variables — despite their theoretical relevance for production — contribute the least predictive power of any variable group. This does not imply that climate is irrelevant to coffee prices, but rather that its effects operate primarily through supply with a lag of several months to a full growing season, a channel that a contemporaneous monthly model is not designed to capture. The implications of this finding for model specification are discussed further in the limitations section.
+Across both varieties, financial and macroeconomic variables systematically outrank supply-side fundamentals and climate variables in terms of predictive contribution at monthly frequency. The climate variables contribute the least predictive power of any variable group. This does not imply that climate is irrelevant to coffee prices, but rather that its effects may operate primarily through supply with a lag of several months to a full growing season, a channel that a contemporaneous monthly model is not designed to capture. The implications of this finding are discussed further in the limitations section.
 
 ### Forecast Trajectories
 
-This chunk collects the actual and predicted values from all six models into a single tidy data frame, separately for Arabica and Robusta. This unified structure allows all forecast plots to be produced with a single `ggplot2` + `facet_wrap()` call rather than six separate plots. The test period dates are reconstructed from the levels datasets used during estimation, ensuring the x-axis of each plot reflects the correct calendar dates.
+*This chunk collects the actual and predicted values from all six models into a single tidy data frame, separately for Arabica and Robusta. This unified structure allows all forecast plots to be produced with a single `ggplot2` + `facet_wrap()` call rather than six separate plots. The test period dates are reconstructed from the levels datasets used during estimation, ensuring the x-axis of each plot reflects the correct calendar dates.*
 
 ```{r forecast_data, message=FALSE, warning=FALSE}
 
@@ -3637,13 +3688,13 @@ dates_test_ara <- df_arabica_levels$date[(n_train_ara_lev + 1):
                                           nrow(df_arabica_levels)]
 dates_test_ara <- as.Date(paste0(dates_test_ara, "-01"))
 
-# Actual observed prices (from ARIMAX result — identical across models)
+# Actual observed prices (from ARIMAX result - identical across models)
 actual_ara <- as.numeric(res_arimax_ara$actual)
 
 # Back-transform ML predictions from [0,1] to USD/lb
 # Min and Max are computed from the full levels dataset
-ara_min <- min(df_arabica_levels$prix_arabica, na.rm = TRUE)
-ara_max <- max(df_arabica_levels$prix_arabica, na.rm = TRUE)
+ara_min <- min(df_arabica_levels$arabica_price, na.rm = TRUE)
+ara_max <- max(df_arabica_levels$arabica_price, na.rm = TRUE)
 
 backtransform <- function(x_scaled, x_min, x_max) {
   x_scaled * (x_max - x_min) + x_min
@@ -3681,8 +3732,8 @@ dates_test_rob <- as.Date(paste0(dates_test_rob, "-01"))
 
 actual_rob <- as.numeric(res_arimax_rob$actual)
 
-rob_min <- min(df_robusta_levels$prix_robusta, na.rm = TRUE)
-rob_max <- max(df_robusta_levels$prix_robusta, na.rm = TRUE)
+rob_min <- min(df_robusta_levels$robusta_price, na.rm = TRUE)
+rob_max <- max(df_robusta_levels$robusta_price, na.rm = TRUE)
 
 df_forecasts_rob <- data.frame(
   date   = rep(dates_test_rob, 6),
@@ -3703,6 +3754,7 @@ df_forecasts_rob <- data.frame(
                         levels = c("ARIMAX", "MLR", "Random Forest",
                                    "XGBoost", "SVM", "ANN")))
 
+
 # ----------------------------------------------------------
 # ARIMAX CONFIDENCE INTERVALS — ARABICA
 # The forecast() function is re-called on the final ARIMAX
@@ -3717,8 +3769,8 @@ xreg_test_ara <- as.matrix(
 )
 
 fc_ci_ara <- forecast(res_arimax_ara$model,
-                      h    = nrow(xreg_test_ara),
-                      xreg = xreg_test_ara,
+                      h     = nrow(xreg_test_ara),
+                      xreg  = xreg_test_ara,
                       level = 95)
 
 df_ci_ara <- data.frame(
@@ -3739,8 +3791,8 @@ xreg_test_rob <- as.matrix(
 )
 
 fc_ci_rob <- forecast(res_arimax_rob$model,
-                      h    = nrow(xreg_test_rob),
-                      xreg = xreg_test_rob,
+                      h     = nrow(xreg_test_rob),
+                      xreg  = xreg_test_rob,
                       level = 95)
 
 df_ci_rob <- data.frame(
@@ -3752,7 +3804,7 @@ df_ci_rob <- data.frame(
 
 #### Actual vs Predicted — Arabica
 
-This chunk produces the six-panel actual vs predicted plot for Arabica. Each panel corresponds to one model; the black line shows observed prices and the coloured line shows the walk-forward forecasts over the test period. A close alignment between the two lines indicates strong predictive performance; systematic gaps or phase shifts reveal structural weaknesses in the model.
+*This chunk produces the six-panel actual vs predicted plot for Arabica. Each panel corresponds to one model; the black line shows observed prices and the coloured line shows the walk-forward forecasts over the test period. A close alignment between the two lines indicates strong predictive performance; systematic gaps or phase shifts reveal structural weaknesses in the model.*
 
 ```{r forecast_plots_arabica, fig.width=12, fig.height=8}
 
@@ -3767,52 +3819,54 @@ r2_labels_ara <- metriques_all %>%
                                    "XGBoost", "SVM", "ANN")))
 
 ggplot(df_forecasts_ara, aes(x = date)) +
-  # 95% CI ribbon for ARIMAX panel only
-  # x must be specified explicitly because inherit.aes = FALSE
-  # detaches this layer from the global aes(x = date)
   geom_ribbon(
     data = df_forecasts_ara %>%
       filter(model == "ARIMAX") %>%
       left_join(df_ci_ara, by = "date"),
     aes(x = date, ymin = lower, ymax = upper),
     fill        = "#8B4513",
-    alpha       = 0.15,
+    alpha       = 0.12,
     inherit.aes = FALSE
   ) +
-  geom_line(aes(y = actual),    color = "black",   linewidth = 0.7) +
-  geom_line(aes(y = predicted), color = "#8B4513", linewidth = 0.7,
+  geom_line(aes(y = actual), color = "black", linewidth = 0.8) +
+  geom_line(aes(y = predicted), color = "#8B4513", linewidth = 0.8,
             linetype = "dashed") +
   geom_label(data = r2_labels_ara,
              aes(label = label),
              x         = min(df_forecasts_ara$date) + 30,
-             y         = max(df_forecasts_ara$actual) * 0.95,
-             hjust     = 0, size = 3,
-             fill      = "white", linewidth = 0) +
+             y         = max(df_forecasts_ara$actual) * 0.97,
+             hjust     = 0, size = 2.8, fontface = "bold",
+             fill      = "white", linewidth = 0, alpha = 0.8) +
   facet_wrap(~ model, ncol = 3) +
   labs(title    = "Actual vs Predicted — Arabica futures (test set)",
-       subtitle = paste0("Black: observed price (USD/lb) | ",
-                         "Dashed brown: model forecast | ",
-                         "Shaded band: ARIMAX 95% confidence interval"),
+       subtitle = "Black: observed price (USD/lb)  |  Dashed brown: model forecast  |  Shaded band: ARIMAX 95% CI",
        x = NULL, y = "USD/lb") +
   theme_minimal(base_size = 10) +
-  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(
+    strip.text       = element_text(face = "bold", size = 10),
+    strip.background = element_rect(fill = "#f5ece6", color = NA),
+    panel.background = element_rect(fill = "#fafafa", color = NA),
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y")
 ```
 
-The Arabica forecast trajectories confirm and nuance the aggregate R² metrics reported in the comparative table. ARIMAX and XGBoost track the observed price most closely throughout the test period, capturing both the gradual rise through 2021–2022 and the subsequent decline — consistent with their near-identical R² values of 0.821 and 0.818 respectively. Both models tend to lag slightly at turning points, a pattern typical of one-step-ahead walk-forward forecasts where the model has not yet observed the reversal. The 95% confidence interval displayed for ARIMAX remains relatively narrow throughout the test period, reflecting the low residual variance of the model (σ² = 0.005) and confirming that ARIMAX uncertainty is well-calibrated for Arabica price dynamics. The observed price stays within the confidence band for the large majority of the test period, with only minor excursions at the sharpest turning points.
+The Arabica forecast trajectories confirm and nuance the aggregate $R^2$ metrics reported in the comparative table. ARIMAX and XGBoost track the observed price most closely throughout the test period, capturing both the gradual rise through 2021–2022 and the subsequent decline, consistent with their near-identical $R^2$ values of 0.821 and 0.818 respectively. Both models tend to lag slightly at turning points, a pattern typical of one-step-ahead walk-forward forecasts where the model has not yet observed the reversal. The 95% confidence interval displayed for ARIMAX widens progressively over the test period, reflecting the growing uncertainty of multi-step extrapolation from the training-set model. The observed price stays within the confidence band for the large majority of the test period, with only minor excursions at the sharpest turning points.
 
-MLR follows the broad trend reasonably well but produces smoother forecasts that miss the amplitude of short-term fluctuations, reflecting the absence of any autoregressive component in its specification. Random Forest behaves similarly, with forecasts that track the trend but compress the peaks and troughs relative to the observed series — a consequence of the averaging across 500 trees that attenuates extreme predictions.
+MLR follows the broad trend reasonably well but produces smoother forecasts that miss the amplitude of short-term fluctuations, reflecting the absence of any autoregressive component in its specification. Random Forest behaves similarly, with forecasts that track the trend but compress the peaks and troughs relative to the observed series, a consequence of the averaging across 500 trees that attenuates extreme predictions.
 
-The SVM panel reveals a systematic downward bias throughout the test period: the dashed line consistently runs below the observed price, confirming that the fixed hyperparameters (`cost = 1`, `gamma = 0.1`) produce a model that underestimates price levels in this range. A grid search over the hyperparameter space would likely correct this bias but was not feasible within the walk-forward framework given the computational constraints.
+The SVM panel shows forecasts that broadly track the observed price, with the tuned hyperparameters ($cost = 5$, $gamma = 0.05$) producing a reasonable fit across most of the test period.
 
-The ANN panel is the most striking: while the model tracks the general direction of price movements, it produces a pronounced upward spike around mid-2022 that reaches approximately 3.5 USD/lb against an observed price of around 2.5 USD/lb. This instability arises from the random weight reinitialisation at each walk-forward step in `nnet` — with only \~170 training observations at the early test steps, the network is susceptible to converging to local minima that produce extreme predictions for isolated observations. This explains the lower R² of 0.453 relative to the other models and is discussed further in the limitations section.
+The ANN panel is the most striking: while the model tracks the general direction of price movements, it produces a pronounced upward spike around mid-2022 that reaches approximately 3.5 USD/lb against an observed price of around 2.5 USD/lb. This instability arises from the random weight reinitialisation at each walk-forward step in `nnet`, with only approximately 170 training observations at the early test steps, leaving the network susceptible to converging to local minima that produce extreme predictions for isolated observations. This explains the lower $R^2$ of 0.453 relative to the other models and is discussed further in the limitations section.
 
 #### Actual vs Predicted — Robusta
 
-This chunk produces the equivalent six-panel plot for Robusta. The shorter test period (approximately 39 months) makes the visual comparison more compressed, but the same alignment logic applies. The sharp upward trend visible from 2022 onward is a key diagnostic: models that fail to track this trend will show a pronounced divergence in the right portion of each panel.
+*This chunk produces the equivalent six-panel plot for Robusta. The shorter test period (approximately 39 months) makes the visual comparison more compressed, but the same alignment logic applies. The sharp upward trend visible from 2022 onward is a key diagnostic: models that fail to track this trend will show a pronounced divergence in the right portion of each panel.*
 
 ```{r forecast_plots_robusta, fig.width=12, fig.height=8}
 
+# R² labels to display inside each panel
 r2_labels_rob <- metriques_all %>%
   filter(Series == "Robusta") %>%
   mutate(R2    = as.numeric(R2),
@@ -3829,44 +3883,47 @@ ggplot(df_forecasts_rob, aes(x = date)) +
       left_join(df_ci_rob, by = "date"),
     aes(x = date, ymin = lower, ymax = upper),
     fill        = "#2E8B57",
-    alpha       = 0.15,
+    alpha       = 0.12,
     inherit.aes = FALSE
   ) +
-  geom_line(aes(y = actual),    color = "black",   linewidth = 0.7) +
-  geom_line(aes(y = predicted), color = "#2E8B57", linewidth = 0.7,
+  geom_line(aes(y = actual), color = "black", linewidth = 0.8) +
+  geom_line(aes(y = predicted), color = "#2E8B57", linewidth = 0.8,
             linetype = "dashed") +
   geom_label(data = r2_labels_rob,
              aes(label = label),
              x         = min(df_forecasts_rob$date) + 30,
-             y         = max(df_forecasts_rob$actual) * 0.95,
-             hjust     = 0, size = 3,
-             fill      = "white", linewidth = 0) +
+             y         = max(df_forecasts_rob$actual) * 0.97,
+             hjust     = 0, size = 2.8, fontface = "bold",
+             fill      = "white", linewidth = 0, alpha = 0.8) +
   facet_wrap(~ model, ncol = 3) +
   labs(title    = "Actual vs Predicted — Robusta futures (test set)",
-       subtitle = paste0("Black: observed price (USD/tonne) | ",
-                         "Dashed green: model forecast | ",
-                         "Shaded band: ARIMAX 95% confidence interval"),
+       subtitle = "Black: observed price (USD/tonne)  |  Dashed green: model forecast  |  Shaded band: ARIMAX 95% CI",
        x = NULL, y = "USD/tonne") +
   theme_minimal(base_size = 10) +
-  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(
+    strip.text       = element_text(face = "bold", size = 10),
+    strip.background = element_rect(fill = "#e8f5ec", color = NA),
+    panel.background = element_rect(fill = "#fafafa", color = NA),
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y")
 ```
 
-The Robusta forecast trajectories reveal a more heterogeneous picture than Arabica. ARIMAX stands out clearly as the strongest model, with its dashed line tracking the observed price almost perfectly throughout the test period — including the sharp upward surge from late 2023 — consistent with its R² of 0.929. The 95% confidence interval for ARIMAX is notably wider than its Arabica counterpart, reflecting the substantially higher residual variance of the Robusta model (σ² = 6,270 vs 0.005 for Arabica) and the greater uncertainty inherent in forecasting a strongly trending and volatile series. Despite this width, the observed price remains within the confidence band for almost the entire test period, confirming that the interval is well-calibrated. The progressive widening of the band toward the end of the test period is consistent with the growing uncertainty of autoregressive forecasts over longer horizons.
+The Robusta forecast trajectories reveal a more heterogeneous picture than Arabica. ARIMAX stands out as the strongest model, with its dashed line tracking the observed price closely throughout the test period, including the sharp upward surge from 2023, consistent with its $R^2$ of 0.929. The 95% confidence interval for ARIMAX is notably wider than its Arabica counterpart, reflecting the substantially higher residual variance of the Robusta model ($\sigma^2 = 6{,}270$ vs 0.005 for Arabica) and the greater uncertainty inherent in forecasting a strongly trending and volatile series. Despite this width, the observed price remains within the confidence band for almost the entire test period. The progressive widening of the band toward the end of the test period is consistent with the growing uncertainty of autoregressive forecasts over longer horizons.
 
-MLR fails visibly, with forecasts oscillating erratically around the observed series and producing large directional errors in both 2022 and 2024. This confirms that a static linear specification without temporal dynamics cannot capture the persistent upward trend that dominates the Robusta test period, and explains its R² of 0.276.
+MLR fails visibly, with forecasts oscillating erratically around the observed series and producing large directional errors in both 2022 and 2024. This confirms that a static linear specification without temporal dynamics cannot capture the persistent upward trend that dominates the Robusta test period, and explains its $R^2$ of 0.276.
 
-Among the ML models, XGBoost tracks the broad trajectory reasonably well (R² = 0.796) but systematically underestimates the acceleration visible from mid-2023 onward — the dashed line flattens while the observed price continues rising sharply. Random Forest shows a similar pattern with a slightly lower fit (R² = 0.692). Both models appear to anchor too strongly on the historical price range seen during training, struggling to extrapolate beyond it — a known limitation of tree-based methods in strongly trending out-of-sample periods.
+Among the ML models, XGBoost tracks the broad trajectory reasonably well ($R^2$ = 0.796) but underestimates the acceleration visible from mid-2023 onward, with the dashed line flattening while the observed price continues rising sharply. Random Forest shows a similar pattern with a slightly lower fit ($R^2$ = 0.695). Both models appear to anchor on the historical price range seen during training, struggling to extrapolate beyond it, a pattern consistent with the known tendency of tree-based ensemble methods to compress predictions toward the training distribution.
 
-The SVM and ANN panels both show instability, with forecast lines exhibiting erratic spikes that diverge substantially from the observed series at several points. For ANN in particular, a prominent upward spike is visible in early 2022, mirroring the pattern observed for Arabica and confirming that the instability of `nnet` weight initialisation is a structural limitation under the current walk-forward configuration with a small training window.
+The SVM panel shows oscillations throughout the test period, with forecast lines diverging from the observed series at several points. The ANN panel exhibits a more pronounced instability, with a prominent upward spike visible in early 2022, mirroring the pattern observed for Arabica and confirming that the instability of `nnet` weight initialisation is a structural limitation under the current walk-forward configuration with a small training window.
 
 ### Forecast Residuals
 
-This chunk plots the forecast residuals (predicted minus actual) for each model over the test period. A residual series hovering around zero with no systematic pattern indicates an unbiased model; persistent positive or negative deviations reveal directional bias, while increasing variance over time suggests heteroskedasticity in the forecast errors.
+*This chunk plots the forecast residuals (predicted minus actual) for each model over the test period. A residual series hovering around zero with no systematic pattern indicates an unbiased model; persistent positive or negative deviations reveal directional bias, while increasing variance over time suggests heteroskedasticity in the forecast errors. Note that the y-axis scale varies freely across panels to accommodate the different magnitudes of Arabica and Robusta residuals.*
 
-```{r residuals_plots, fig.width=12, fig.height=8}
+```{r residuals_plots, fig.width=12, fig.height=5}
 
-# Combine Arabica and Robusta residuals into one frame
 df_residuals <- bind_rows(
   df_forecasts_ara %>%
     mutate(residual = predicted - actual,
@@ -3876,38 +3933,82 @@ df_residuals <- bind_rows(
            series   = "Robusta")
 )
 
-ggplot(df_residuals, aes(x = date, y = residual, color = series)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
-  geom_line(linewidth = 0.6) +
-  scale_color_manual(values = c("Arabica" = "#8B4513",
-                                "Robusta" = "#2E8B57")) +
-  facet_wrap(~ model, ncol = 3, scales = "free_y") +
-  labs(title    = "Forecast residuals by model (test set)",
-       subtitle = "Residual = Predicted − Actual. Dashed line at zero.",
-       x = NULL, y = "Residual", color = NULL) +
+# ----------------------------------------------------------
+# PLOT 1 — ARABICA RESIDUALS
+# Fixed y-axis scale across all panels to allow direct
+# comparison of residual amplitude between models.
+# ----------------------------------------------------------
+
+p_res_ara <- ggplot(
+  df_residuals %>% filter(series == "Arabica"),
+  aes(x = date, y = residual)) +
+  geom_hline(yintercept = 0, linetype = "dashed",
+             color = "grey40", linewidth = 0.5) +
+  geom_ribbon(aes(ymin = ifelse(residual > 0, 0, residual),
+                  ymax = ifelse(residual > 0, residual, 0)),
+              fill = "#8B4513", alpha = 0.15) +
+  geom_line(color = "#8B4513", linewidth = 0.6) +
+  facet_wrap(~ model, ncol = 3, scales = "fixed") +
+  labs(title    = "Forecast residuals — Arabica futures (test set)",
+       subtitle = "Residual = Predicted - Actual. Dashed line at zero.",
+       x = NULL, y = "Residual (USD/lb)") +
   theme_minimal(base_size = 10) +
-  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
-  theme(axis.text.x  = element_text(angle = 45, hjust = 1),
-        legend.position = "bottom")
+  theme(
+    strip.text       = element_text(face = "bold", size = 10),
+    strip.background = element_rect(fill = "#f5ece6", color = NA),
+    panel.background = element_rect(fill = "#fafafa", color = NA),
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y")
+
+
+# ----------------------------------------------------------
+# PLOT 2 — ROBUSTA RESIDUALS
+# Fixed y-axis scale across all panels to allow direct
+# comparison of residual amplitude between models.
+# ----------------------------------------------------------
+
+p_res_rob <- ggplot(
+  df_residuals %>% filter(series == "Robusta"),
+  aes(x = date, y = residual)) +
+  geom_hline(yintercept = 0, linetype = "dashed",
+             color = "grey40", linewidth = 0.5) +
+  geom_ribbon(aes(ymin = ifelse(residual > 0, 0, residual),
+                  ymax = ifelse(residual > 0, residual, 0)),
+              fill = "#2E8B57", alpha = 0.15) +
+  geom_line(color = "#2E8B57", linewidth = 0.6) +
+  facet_wrap(~ model, ncol = 3, scales = "fixed") +
+  labs(title    = "Forecast residuals — Robusta futures (test set)",
+       subtitle = "Residual = Predicted - Actual. Dashed line at zero.",
+       x = NULL, y = "Residual (USD/tonne)") +
+  theme_minimal(base_size = 10) +
+  theme(
+    strip.text       = element_text(face = "bold", size = 10),
+    strip.background = element_rect(fill = "#e8f5ec", color = NA),
+    panel.background = element_rect(fill = "#fafafa", color = NA),
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y")
+
+p_res_ara
+p_res_rob
 ```
 
-The residual plots complement the forecast trajectory analysis by making directional biases and error patterns explicitly visible. Several conclusions emerge.
+The residual plots complement the forecast trajectory analysis by making directional biases and error patterns explicitly visible. Within each variety, the y-axis scale is fixed across all panels to allow direct comparison of residual amplitude between models.
 
-For Arabica (brown line), residuals hover close to zero across all six models throughout the test period, confirming the absence of systematic directional bias. The amplitude of Arabica residuals is small relative to the price scale — rarely exceeding ±100 USD/lb equivalent — which is consistent with the relatively stable price environment of the 2021–2024 test window for this variety.
+**For Arabica**, ARIMAX, XGBoost and SVM produce the cleanest residuals, oscillating symmetrically around zero throughout the test period. MLR and Random Forest both show a pronounced negative spike around 2022, reflecting the lag at the peak of the price cycle. The ANN panel exhibits the largest amplitude of any Arabica model, with alternating positive and negative spikes in 2022 and 2023, consistent with the instability of `nnet` weight reinitialisation documented in the trajectory analysis.
 
-For Robusta (green line), residuals are substantially larger in magnitude across all models, reflecting the more volatile and strongly trending nature of the Robusta test period. ARIMAX produces the most well-behaved Robusta residuals, oscillating symmetrically around zero with no persistent sign pattern — a hallmark of an unbiased model. MLR residuals, by contrast, show a pronounced negative episode in 2022–2023 followed by a large positive spike in 2024, confirming the directional failure already visible in the forecast trajectory plot. This pattern indicates that MLR systematically underestimated prices during the 2022 surge and then overcorrected.
-
-XGBoost and Random Forest both exhibit a consistent negative bias for Robusta from mid-2023 onward — residuals turn persistently negative as the observed price accelerates upward while model forecasts flatten. This confirms the extrapolation limitation of tree-based methods noted in the trajectory analysis: both models anchor on the price range seen during training and fail to track prices that move beyond that range in the test period.
-
-The SVM residuals for Robusta display the largest amplitude of any model, with swings exceeding ±500 USD/tonne, reflecting the combined effect of suboptimal hyperparameters and the difficulty of the Robusta test period. The ANN panel shows the spike documented in the trajectory plot as a sharp positive residual in early 2022, after which the series reverts toward zero — suggesting the instability is localised rather than systematic across the full test period.
+**For Robusta**, ARIMAX produces the most well-behaved residuals, oscillating symmetrically around zero with no persistent sign pattern. MLR shows a pronounced negative episode beginning in mid-2022, persisting through the end of the test period, confirming the directional failure already visible in the forecast trajectory plot. Random Forest exhibits a persistent negative bias from mid-2022 onward. XGBoost shows a negative episode in 2021 that reverts toward zero, followed by a renewed negative bias from late 2022 that accentuates through 2023 before partially recovering. Both patterns are consistent with the extrapolation limitation of tree-based ensemble methods noted in the trajectory analysis. SVM shows oscillations of moderate amplitude throughout the test period, with no persistent directional bias. The ANN panel exhibits a prominent positive spike in early 2021, after which residuals revert toward zero, suggesting the instability is localised rather than systematic.
 
 ## Robustness Check: Disaggregated Climate Variables
 
-The main model specifications rely on two production-weighted climate indices that aggregate temperature and precipitation conditions across 14 producer countries into single monthly series. While this aggregation is methodologically motivated — it avoids endogeneity, reduces dimensionality, and is consistent with the fixed-weight approach documented in the data section — it raises the question of whether relevant country-specific climate information is lost in the process.
+The main model specifications rely on two production-weighted climate indices that aggregate temperature and precipitation conditions across 14 producer countries into single monthly series. While this aggregation is methodologically motivated, as it avoids endogeneity, reduces dimensionality, and is consistent with the fixed-weight approach documented in the data section, it raises the question of whether relevant country-specific climate information is lost in the process.
 
-To assess this, the four ML models are re-estimated under an alternative specification in which the two aggregated indices are replaced by the 28 individual national series (14 countries × 2 climate variables), holding all other predictors constant. A comparison of out-of-sample R² between the two configurations provides direct evidence on whether disaggregation improves predictive accuracy. ARIMAX and MLR are excluded from this comparison: ARIMAX is computationally prohibitive with 40 regressors in a walk-forward loop, and MLR is ill-conditioned with 40 predictors on approximately 170 training observations.
+To assess this, the four ML models are re-estimated under an alternative specification in which the two aggregated indices are replaced by the 28 individual national series (14 countries × 2 climate variables), holding all other predictors constant. A comparison of out-of-sample $R^2$ between the two configurations provides direct evidence on whether disaggregation improves predictive accuracy. ARIMAX and MLR are excluded from this comparison: ARIMAX is computationally prohibitive with 40 regressors in a walk-forward loop, and MLR is ill-conditioned with 40 predictors on approximately 170 training observations.
 
-The four model functions below (Random Forest, XGBoost, SVM, ANN) are exactly the same functions used in Section 4.3–4.6, with a single difference: the variable list passed to them is `vars_exo_dis` (40 disaggregated predictors) instead of `vars_exo` (14 baseline predictors). Rather than repeating four long functions with only one line changed, this chunk writes each function once and calls it with the disaggregated variable list and the disaggregated dataset.
+*The chunk below re-estimates the four ML models using the disaggregated variable list and stores the results for comparison with the baseline specification. The model functions are identical in structure to those used in the main results, with a `vars_exo_vec` argument replacing the global `vars_exo` list.*
 
 ```{r robustness_disaggregated, message=FALSE, warning=FALSE, results='hide'}
 
@@ -3949,8 +4050,8 @@ vars_climate_dis <- c(
 )
 
 vars_exo_dis <- c(
-  "prix_sucre", "prix_cacao", "cpi", "wti", "fed_funds_rate",
-  "dxy", "production", "consommation", "exportations",
+  "sugar_price", "cocoa_price", "cpi", "wti", "fed_funds_rate",
+  "dxy", "production", "consumption", "exports",
   "ending_stocks", "oni", "cot_net_mm",
   vars_climate_dis
 )
@@ -3965,34 +4066,32 @@ vars_exo_dis <- c(
 
 preparer_niveaux_dis <- function(df, var_dep) {
   colonnes_a_garder <- c("date", var_dep, vars_exo_dis)
-  df_modele <- df[, colonnes_a_garder]
-  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele         <- df[, colonnes_a_garder]
+  df_modele         <- df_modele[complete.cases(df_modele), ]
   df_modele[order(df_modele$date), ]
 }
 
-df_arabica_dis <- preparer_niveaux_dis(dataset_disagg, "prix_arabica")
+df_arabica_dis <- preparer_niveaux_dis(dataset_disagg, "arabica_price")
 df_robusta_dis <- preparer_niveaux_dis(
-  dataset_disagg[!is.na(dataset_disagg$prix_robusta), ], "prix_robusta")
+  dataset_disagg[!is.na(dataset_disagg$robusta_price), ], "robusta_price")
 
 n_train_ara_dis <- floor(nrow(df_arabica_dis) * split_ratio)
 n_train_rob_dis <- floor(nrow(df_robusta_dis) * split_ratio)
 
 
 # ----------------------------------------------------------
-# STEP 4 — MODEL FUNCTIONS
-# Identical in structure to fit_rf(), fit_xgb(), fit_svm() and
-# fit_ann() defined earlier in the document. The only
-# difference is an added vars_exo_vec argument, since these
-# functions are reused below with both the disaggregated list
-# (vars_exo_dis, this chunk) and the variety-specific lists
-# (Section 4.9) without copying the function body again.
+# STEP 4 — GENERIC MODEL FUNCTIONS
+# Identical in structure to the main model functions, with
+# an added vars_exo_vec argument so the same function can
+# be reused with different predictor lists without copying
+# the function body.
 # ----------------------------------------------------------
 
 fit_rf_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
-  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
-  df_modele <- df_modele[complete.cases(df_modele), ]
-  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+  df_modele            <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele            <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled     <- as.data.frame(sapply(df_modele, minmax_scale))
 
   n_total       <- nrow(df_modele_scaled)
   donnees_train <- df_modele_scaled[1:n_train, ]
@@ -4003,7 +4102,7 @@ fit_rf_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   formule     <- as.formula(paste(var_dep, "~ ."))
 
   for (i in 1:n_test) {
-    nb_lignes_test_vues <- i - 1
+    nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
     foret <- randomForest(formule, data = fenetre_entrainement,
@@ -4016,13 +4115,13 @@ fit_rf_generique <- function(df, var_dep, vars_exo_vec, n_train) {
 
 fit_xgb_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
-  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
-  df_modele <- df_modele[complete.cases(df_modele), ]
-  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+  df_modele            <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele            <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled     <- as.data.frame(sapply(df_modele, minmax_scale))
 
   colonnes_predicteurs <- setdiff(colnames(df_modele_scaled), var_dep)
-  X <- as.matrix(df_modele_scaled[, colonnes_predicteurs])
-  y <- df_modele_scaled[[var_dep]]
+  X       <- as.matrix(df_modele_scaled[, colonnes_predicteurs])
+  y       <- df_modele_scaled[[var_dep]]
   n_total <- length(y)
   n_test  <- n_total - n_train
 
@@ -4046,9 +4145,9 @@ fit_xgb_generique <- function(df, var_dep, vars_exo_vec, n_train) {
 
 fit_svm_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
-  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
-  df_modele <- df_modele[complete.cases(df_modele), ]
-  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+  df_modele            <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele            <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled     <- as.data.frame(sapply(df_modele, minmax_scale))
 
   n_total       <- nrow(df_modele_scaled)
   donnees_train <- df_modele_scaled[1:n_train, ]
@@ -4059,7 +4158,7 @@ fit_svm_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   formule     <- as.formula(paste(var_dep, "~ ."))
 
   for (i in 1:n_test) {
-    nb_lignes_test_vues <- i - 1
+    nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
     modele_svm <- svm(formule, data = fenetre_entrainement,
@@ -4072,9 +4171,9 @@ fit_svm_generique <- function(df, var_dep, vars_exo_vec, n_train) {
 
 fit_ann_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
-  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
-  df_modele <- df_modele[complete.cases(df_modele), ]
-  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+  df_modele            <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele            <- df_modele[complete.cases(df_modele), ]
+  df_modele_scaled     <- as.data.frame(sapply(df_modele, minmax_scale))
 
   n_total       <- nrow(df_modele_scaled)
   donnees_train <- df_modele_scaled[1:n_train, ]
@@ -4086,7 +4185,7 @@ fit_ann_generique <- function(df, var_dep, vars_exo_vec, n_train) {
 
   set.seed(42)
   for (i in 1:n_test) {
-    nb_lignes_test_vues <- i - 1
+    nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
     modele_ann <- nnet(formule, data = fenetre_entrainement,
@@ -4100,50 +4199,39 @@ fit_ann_generique <- function(df, var_dep, vars_exo_vec, n_train) {
 
 # ----------------------------------------------------------
 # STEP 5 — RUN ALL FOUR MODELS ON BOTH SERIES
-# Each model function is called once for Arabica and once for
-# Robusta, using the disaggregated dataset and the 40-variable
-# disaggregated predictor list defined in Step 2.
-# cat() progress messages are suppressed in the rendered
-# output by results='hide' but remain visible in the console
-# during execution.
 # ----------------------------------------------------------
 
-cat("Running disaggregated RF — Arabica...\n")
-res_rf_dis_ara  <- fit_rf_generique(df_arabica_dis, "prix_arabica",
+cat("Running disaggregated RF - Arabica...\n")
+res_rf_dis_ara  <- fit_rf_generique(df_arabica_dis, "arabica_price",
                                     vars_exo_dis, n_train_ara_dis)
-cat("Running disaggregated RF — Robusta...\n")
-res_rf_dis_rob  <- fit_rf_generique(df_robusta_dis, "prix_robusta",
+cat("Running disaggregated RF - Robusta...\n")
+res_rf_dis_rob  <- fit_rf_generique(df_robusta_dis, "robusta_price",
                                     vars_exo_dis, n_train_rob_dis)
 
-cat("Running disaggregated XGBoost — Arabica...\n")
-res_xgb_dis_ara <- fit_xgb_generique(df_arabica_dis, "prix_arabica",
+cat("Running disaggregated XGBoost - Arabica...\n")
+res_xgb_dis_ara <- fit_xgb_generique(df_arabica_dis, "arabica_price",
                                      vars_exo_dis, n_train_ara_dis)
-cat("Running disaggregated XGBoost — Robusta...\n")
-res_xgb_dis_rob <- fit_xgb_generique(df_robusta_dis, "prix_robusta",
+cat("Running disaggregated XGBoost - Robusta...\n")
+res_xgb_dis_rob <- fit_xgb_generique(df_robusta_dis, "robusta_price",
                                      vars_exo_dis, n_train_rob_dis)
 
-cat("Running disaggregated SVM — Arabica...\n")
-res_svm_dis_ara <- fit_svm_generique(df_arabica_dis, "prix_arabica",
+cat("Running disaggregated SVM - Arabica...\n")
+res_svm_dis_ara <- fit_svm_generique(df_arabica_dis, "arabica_price",
                                      vars_exo_dis, n_train_ara_dis)
-cat("Running disaggregated SVM — Robusta...\n")
-res_svm_dis_rob <- fit_svm_generique(df_robusta_dis, "prix_robusta",
+cat("Running disaggregated SVM - Robusta...\n")
+res_svm_dis_rob <- fit_svm_generique(df_robusta_dis, "robusta_price",
                                      vars_exo_dis, n_train_rob_dis)
 
-cat("Running disaggregated ANN — Arabica...\n")
-res_ann_dis_ara <- fit_ann_generique(df_arabica_dis, "prix_arabica",
+cat("Running disaggregated ANN - Arabica...\n")
+res_ann_dis_ara <- fit_ann_generique(df_arabica_dis, "arabica_price",
                                      vars_exo_dis, n_train_ara_dis)
-cat("Running disaggregated ANN — Robusta...\n")
-res_ann_dis_rob <- fit_ann_generique(df_robusta_dis, "prix_robusta",
+cat("Running disaggregated ANN - Robusta...\n")
+res_ann_dis_rob <- fit_ann_generique(df_robusta_dis, "robusta_price",
                                      vars_exo_dis, n_train_rob_dis)
 
 
 # ----------------------------------------------------------
 # STEP 6 — COMPILE RESULTS INTO A COMPARISON TABLE
-# For each model and series, the baseline R² (already computed
-# in metriques_all from Section 4.7) is placed next to the
-# disaggregated R² computed just above, and the difference
-# between the two (Delta_R2) is reported. Built here, displayed
-# in the next chunk.
 # ----------------------------------------------------------
 
 df_robustness <- data.frame(
@@ -4177,29 +4265,44 @@ df_robustness <- data.frame(
   )
 ```
 
+*The table below compares the out-of-sample $R^2$ of each model under the baseline aggregated specification and the disaggregated specification. A positive $ΔR^2$ indicates that disaggregation improves predictive accuracy; a negative value indicates deterioration.*
+
 ```{r robustness_table}
 
-# Display the comparison table. Kept in a separate chunk so
-# that results='hide' on the estimation chunk above does not
-# suppress the table output.
-kable(df_robustness,
-      caption   = paste0("Robustness check — Aggregated climate indices vs ",
-                         "disaggregated national series (out-of-sample R²)"),
-      booktabs  = TRUE,
-      col.names = c("Model", "Series", "R² (aggregated)",
-                    "R² (disaggregated)", "ΔR²")) %>%
+df_robustness %>%
+  arrange(Series, Model) %>%
+  select(Model, R2_baseline, R2_disaggregated, Delta_R2) %>%
+  kable(caption   = "Robustness check — aggregated vs disaggregated climate indices (out-of-sample R²)",
+        booktabs  = TRUE,
+        col.names = c("Model", "R² (aggregated)",
+                      "R² (disaggregated)", "ΔR²")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = FALSE) %>%
-  column_spec(5, color = ifelse(df_robustness$Delta_R2 > 0,
-                                "darkgreen", "red"))
+  row_spec(4, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 4,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 5, 8,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec") %>%
+  column_spec(4, color = ifelse(
+    df_robustness %>% arrange(Series, Model) %>% pull(Delta_R2) > 0,
+    "darkgreen", "red"))
 ```
 
+The robustness check confirms that the production-weighted aggregation of climate indices is the appropriate specification. Disaggregation systematically deteriorates out-of-sample $R^2$ across all four ML models and both coffee varieties, with every $ΔR^2$ value negative. The deterioration is moderate for Random Forest ($ΔR^2$ of −0.044 for Arabica, −0.115 for Robusta) and XGBoost (−0.020 and −0.058), but severe for SVM and ANN, which produce negative $R^2$ values under the disaggregated specification, indicating performance worse than a naive mean forecast.
+
+This pattern is consistent with the curse of dimensionality: with 40 regressors and approximately 170 training observations, models sensitive to input dimensionality become severely overparameterised and fail to generalise to the test period. The ensemble methods Random Forest and XGBoost are more robust to this problem through their built-in variable selection mechanisms, but still suffer a meaningful performance loss. These results suggest that the production-weighted aggregation improves the climate signal by filtering out country-specific noise, and that the information gain from disaggregation is outweighed by the dimensionality cost at the sample sizes available in this study.
 
 ## Variety-Specific Model Specification
 
-The robustness check conducted in the preceding section validated the production-weighted aggregation methodology by showing that disaggregated climate indices systematically deteriorate out-of-sample performance. A second and more substantive robustness check is now conducted by re-estimating all six models under a variety-specific specification. Rather than using global climate indices and world supply-and-demand fundamentals, this specification assigns each model its own set of variety-relevant predictors: the Arabica models use climate indices and fundamentals aggregated across the ten Arabica-producing countries, while the Robusta models use the equivalent aggregates for the six Robusta-producing countries. This specification is motivated by the structural concentration of Robusta production in Vietnam and Indonesia (\~67% combined) and the broader geographic diversification of Arabica production. Using global indices for Robusta in particular dilutes the climate and supply signal by including conditions in countries that produce virtually no Robusta.
+The robustness check conducted in the preceding section validated the production-weighted aggregation methodology by showing that disaggregated climate indices systematically deteriorate out-of-sample performance. A second robustness check is now conducted by re-estimating all six models under a variety-specific specification. Rather than using global climate indices and world supply-and-demand fundamentals, this specification assigns each model its own set of variety-relevant predictors: the Arabica models use climate indices and fundamentals aggregated across the ten Arabica-producing countries, while the Robusta models use the equivalent aggregates for the six Robusta-producing countries. This specification is motivated by the structural concentration of Robusta production in Vietnam and Indonesia (approximately 67% combined) and the broader geographic diversification of Arabica production. Using global indices for Robusta in particular dilutes the climate and supply signal by including conditions in countries that produce virtually no Robusta.
 
-```{r preprocessing_vs, message=FALSE, warning=FALSE}
+*This chunk defines the variety-specific exogenous variable lists and prepares the two datasets used in the re-estimation below. Sample sizes are printed to the console for verification.*
+
+```{r preprocessing_vs, message=FALSE, warning=FALSE, include=FALSE}
 
 # ----------------------------------------------------------
 # VARIETY-SPECIFIC EXOGENOUS VARIABLE LISTS
@@ -4212,18 +4315,19 @@ The robustness check conducted in the preceding section validated the production
 # ----------------------------------------------------------
 
 vars_exo_ara_vs <- c(
-  "prix_sucre", "prix_cacao", "cpi", "wti", "fed_funds_rate",
-  "dxy", "production_ara", "consommation_ara", "exportations_ara",
+  "sugar_price", "cocoa_price", "cpi", "wti", "fed_funds_rate",
+  "dxy", "production_ara", "consumption", "exports",
   "ending_stocks_ara", "indice_precip_arabica", "indice_temp_arabica",
   "oni", "cot_net_mm"
 )
 
 vars_exo_rob_vs <- c(
-  "prix_sucre", "prix_cacao", "cpi", "wti", "fed_funds_rate",
-  "dxy", "production_rob", "consommation_rob", "exportations_rob",
+  "sugar_price", "cocoa_price", "cpi", "wti", "fed_funds_rate",
+  "dxy", "production_rob", "consumption", "exports",
   "ending_stocks_rob", "indice_precip_robusta", "indice_temp_robusta",
   "oni", "cot_net_mm"
 )
+
 
 # ----------------------------------------------------------
 # PREPARE THE VARIETY-SPECIFIC DATASETS
@@ -4235,42 +4339,42 @@ vars_exo_rob_vs <- c(
 
 preparer_niveaux_vs <- function(df, var_dep, vars_exo_vec) {
   colonnes_a_garder <- c("date", var_dep, vars_exo_vec)
-  df_modele <- df[, colonnes_a_garder]
-  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele         <- df[, colonnes_a_garder]
+  df_modele         <- df_modele[complete.cases(df_modele), ]
   df_modele[order(df_modele$date), ]
 }
 
 df_arabica_vs <- preparer_niveaux_vs(
-  dataset_arabica_vs, "prix_arabica", vars_exo_ara_vs)
+  dataset_arabica_vs, "arabica_price", vars_exo_ara_vs)
 
 df_robusta_vs <- preparer_niveaux_vs(
-  dataset_robusta_vs[!is.na(dataset_robusta_vs$prix_robusta), ],
-  "prix_robusta", vars_exo_rob_vs)
+  dataset_robusta_vs[!is.na(dataset_robusta_vs$robusta_price), ],
+  "robusta_price", vars_exo_rob_vs)
 
 # 80/20 split, using the same split_ratio as every other model
 n_train_ara_vs <- floor(nrow(df_arabica_vs) * split_ratio)
 n_train_rob_vs <- floor(nrow(df_robusta_vs) * split_ratio)
 
-cat("Arabica VS — Train:", n_train_ara_vs,
+cat("Arabica VS - Train:", n_train_ara_vs,
     "| Test:", nrow(df_arabica_vs) - n_train_ara_vs, "\n")
-cat("Robusta VS — Train:", n_train_rob_vs,
+cat("Robusta VS - Train:", n_train_rob_vs,
     "| Test:", nrow(df_robusta_vs) - n_train_rob_vs, "\n")
 ```
 
-Sample sizes for the variety-specific datasets mirror those of the baseline specification — 168 training and 43 test observations for Arabica, and 153 training and 39 test observations for Robusta — confirming that the variety-specific variable substitution does not alter the temporal coverage of either dataset.
+Sample sizes for the variety-specific datasets mirror those of the baseline specification, 168 training and 43 test observations for Arabica, and 153 training and 39 test observations for Robusta, confirming that the variety-specific variable substitution does not alter the temporal coverage of either dataset.
 
-All six models are re-estimated under this specification using the same walk-forward protocol as the baseline. The Random Forest, XGBoost, SVM and ANN models reuse the generic functions (`fit_rf_generique`, `fit_xgb_generique`, `fit_svm_generique`, `fit_ann_generique`) already defined in the disaggregated robustness check above, called here with the variety-specific variable lists instead of the disaggregated one. ARIMAX and MLR did not yet have a reusable generic version, so the two functions below generalise `fit_arimax()` and `fit_mlr()` from Section 4.1–4.2 by adding a `vars_exo_vec` argument, following the same pattern.
+All six models are re-estimated under this specification using the same walk-forward protocol as the baseline. The Random Forest, XGBoost, SVM and ANN models reuse the generic functions already defined in the disaggregated robustness check above, called here with the variety-specific variable lists. ARIMAX and MLR are generalised below by adding a `vars_exo_vec` argument following the same pattern.
 
-```{r modeles_vs, message=FALSE, warning=FALSE}
+*The chunk below defines the generic ARIMAX and MLR functions and re-estimates all six models under the variety-specific specification.*
+
+```{r modeles_vs, message=FALSE, warning=FALSE, results='hide'}
 
 # ----------------------------------------------------------
-# GENERIC ARIMAX AND MLR FUNCTIONS
-# Identical in every respect to fit_arimax() and fit_mlr()
-# defined in Sections 4.1 and 4.2, except that the predictor
-# list is passed in as an argument (vars_exo_vec) instead of
-# always using the global vars_exo. This allows the exact same
-# function to be reused for the baseline, and here for the
-# variety-specific specification.
+# STEP 1 — GENERIC ARIMAX FUNCTION
+# Identical to fit_arimax() defined earlier, except that the
+# predictor list is passed in as vars_exo_vec rather than
+# always using the global vars_exo. This allows the function
+# to be called with any predictor list without modification.
 # ----------------------------------------------------------
 
 fit_arimax_generique <- function(df, var_dep, vars_exo_vec, n_train) {
@@ -4278,27 +4382,26 @@ fit_arimax_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   serie_dependante    <- df[[var_dep]]
   matrice_regresseurs <- as.matrix(df[, vars_exo_vec])
 
-  colonnes_valides <- apply(matrice_regresseurs, 2,
-                            function(col) !all(is.na(col)))
+  colonnes_valides    <- apply(matrice_regresseurs, 2,
+                               function(col) !all(is.na(col)))
   matrice_regresseurs <- matrice_regresseurs[, colonnes_valides, drop = FALSE]
 
-  n_total <- length(serie_dependante)
+  n_total    <- length(serie_dependante)
   y_train    <- serie_dependante[1:n_train]
   y_test     <- serie_dependante[(n_train + 1):n_total]
   xreg_train <- matrice_regresseurs[1:n_train, ]
   xreg_test  <- matrice_regresseurs[(n_train + 1):n_total, ]
-  n_test <- length(y_test)
+  n_test     <- length(y_test)
 
   predictions <- numeric(n_test)
 
   for (i in 1:n_test) {
     nb_observations_vues <- i - 1
-    indices_vus <- seq_len(nb_observations_vues)
-    y_vu    <- y_test[indices_vus]
-    xreg_vu <- xreg_test[indices_vus, , drop = FALSE]
-
-    y_fenetre    <- c(y_train, y_vu)
-    xreg_fenetre <- rbind(xreg_train, xreg_vu)
+    indices_vus          <- seq_len(nb_observations_vues)
+    y_vu                 <- y_test[indices_vus]
+    xreg_vu              <- xreg_test[indices_vus, , drop = FALSE]
+    y_fenetre            <- c(y_train, y_vu)
+    xreg_fenetre         <- rbind(xreg_train, xreg_vu)
 
     modele_arima <- tryCatch(
       auto.arima(y_fenetre, xreg = xreg_fenetre,
@@ -4318,11 +4421,21 @@ fit_arimax_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   list(actual = y_test, predicted = predictions)
 }
 
+
+# ----------------------------------------------------------
+# STEP 2 — GENERIC MLR FUNCTION
+# Identical to fit_mlr() defined earlier, except that the
+# predictor list is passed in as vars_exo_vec. intersect()
+# ensures only columns present in df are used, guarding
+# against any name mismatch between the variable list and
+# the dataset columns.
+# ----------------------------------------------------------
+
 fit_mlr_generique <- function(df, var_dep, vars_exo_vec, n_train) {
 
   vars_exo_disponibles <- intersect(vars_exo_vec, colnames(df))
-  df_modele <- df[, c(var_dep, vars_exo_disponibles)]
-  df_modele <- df_modele[complete.cases(df_modele), ]
+  df_modele            <- df[, c(var_dep, vars_exo_disponibles)]
+  df_modele            <- df_modele[complete.cases(df_modele), ]
 
   n_total       <- nrow(df_modele)
   donnees_train <- df_modele[1:n_train, ]
@@ -4333,11 +4446,11 @@ fit_mlr_generique <- function(df, var_dep, vars_exo_vec, n_train) {
   formule     <- as.formula(paste(var_dep, "~ ."))
 
   for (i in 1:n_test) {
-    nb_lignes_test_vues <- i - 1
+    nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
-    modele_ols <- lm(formule, data = fenetre_entrainement)
-    predictions[i] <- predict(modele_ols, newdata = donnees_test[i, ])
+    modele_ols           <- lm(formule, data = fenetre_entrainement)
+    predictions[i]       <- predict(modele_ols, newdata = donnees_test[i, ])
   }
 
   list(actual = donnees_test[[var_dep]], predicted = predictions)
@@ -4345,42 +4458,63 @@ fit_mlr_generique <- function(df, var_dep, vars_exo_vec, n_train) {
 
 
 # ----------------------------------------------------------
-# RUN ALL SIX MODELS ON BOTH SERIES, VARIETY-SPECIFIC SPECIFICATION
+# STEP 3 — RUN ALL SIX MODELS ON BOTH SERIES
+# Each model is called twice: once for Arabica using
+# df_arabica_vs and vars_exo_ara_vs, and once for Robusta
+# using df_robusta_vs and vars_exo_rob_vs. The four ML
+# generic functions were defined in the disaggregated
+# robustness check chunk and are reused here unchanged.
 # ----------------------------------------------------------
 
-res_arimax_ara_vs <- fit_arimax_generique(df_arabica_vs, "prix_arabica",
+cat("Running variety-specific ARIMAX - Arabica...\n")
+res_arimax_ara_vs <- fit_arimax_generique(df_arabica_vs, "arabica_price",
                                           vars_exo_ara_vs, n_train_ara_vs)
-res_arimax_rob_vs <- fit_arimax_generique(df_robusta_vs, "prix_robusta",
+cat("Running variety-specific ARIMAX - Robusta...\n")
+res_arimax_rob_vs <- fit_arimax_generique(df_robusta_vs, "robusta_price",
                                           vars_exo_rob_vs, n_train_rob_vs)
 
-res_mlr_ara_vs <- fit_mlr_generique(df_arabica_vs, "prix_arabica",
+cat("Running variety-specific MLR - Arabica...\n")
+res_mlr_ara_vs <- fit_mlr_generique(df_arabica_vs, "arabica_price",
                                     vars_exo_ara_vs, n_train_ara_vs)
-res_mlr_rob_vs <- fit_mlr_generique(df_robusta_vs, "prix_robusta",
+cat("Running variety-specific MLR - Robusta...\n")
+res_mlr_rob_vs <- fit_mlr_generique(df_robusta_vs, "robusta_price",
                                     vars_exo_rob_vs, n_train_rob_vs)
 
-res_rf_ara_vs <- fit_rf_generique(df_arabica_vs, "prix_arabica",
+cat("Running variety-specific RF - Arabica...\n")
+res_rf_ara_vs <- fit_rf_generique(df_arabica_vs, "arabica_price",
                                   vars_exo_ara_vs, n_train_ara_vs)
-res_rf_rob_vs <- fit_rf_generique(df_robusta_vs, "prix_robusta",
+cat("Running variety-specific RF - Robusta...\n")
+res_rf_rob_vs <- fit_rf_generique(df_robusta_vs, "robusta_price",
                                   vars_exo_rob_vs, n_train_rob_vs)
 
-res_xgb_ara_vs <- fit_xgb_generique(df_arabica_vs, "prix_arabica",
+cat("Running variety-specific XGBoost - Arabica...\n")
+res_xgb_ara_vs <- fit_xgb_generique(df_arabica_vs, "arabica_price",
+                                     vars_exo_ara_vs, n_train_ara_vs)
+cat("Running variety-specific XGBoost - Robusta...\n")
+res_xgb_rob_vs <- fit_xgb_generique(df_robusta_vs, "robusta_price",
+                                     vars_exo_rob_vs, n_train_rob_vs)
+
+cat("Running variety-specific SVM - Arabica...\n")
+res_svm_ara_vs <- fit_svm_generique(df_arabica_vs, "arabica_price",
                                     vars_exo_ara_vs, n_train_ara_vs)
-res_xgb_rob_vs <- fit_xgb_generique(df_robusta_vs, "prix_robusta",
+cat("Running variety-specific SVM - Robusta...\n")
+res_svm_rob_vs <- fit_svm_generique(df_robusta_vs, "robusta_price",
                                     vars_exo_rob_vs, n_train_rob_vs)
 
-res_svm_ara_vs <- fit_svm_generique(df_arabica_vs, "prix_arabica",
+cat("Running variety-specific ANN - Arabica...\n")
+res_ann_ara_vs <- fit_ann_generique(df_arabica_vs, "arabica_price",
                                     vars_exo_ara_vs, n_train_ara_vs)
-res_svm_rob_vs <- fit_svm_generique(df_robusta_vs, "prix_robusta",
-                                    vars_exo_rob_vs, n_train_rob_vs)
-
-res_ann_ara_vs <- fit_ann_generique(df_arabica_vs, "prix_arabica",
-                                    vars_exo_ara_vs, n_train_ara_vs)
-res_ann_rob_vs <- fit_ann_generique(df_robusta_vs, "prix_robusta",
+cat("Running variety-specific ANN - Robusta...\n")
+res_ann_rob_vs <- fit_ann_generique(df_robusta_vs, "robusta_price",
                                     vars_exo_rob_vs, n_train_rob_vs)
 
 
 # ----------------------------------------------------------
-# PERFORMANCE METRICS — STACK ALL SIX MODELS, BOTH SERIES
+# STEP 4 — STACK PERFORMANCE METRICS
+# calculer_metriques() is applied to each model's actual and
+# predicted vectors. Results are stacked into a single 12-row
+# data frame (6 models × 2 series) and numeric columns are
+# coerced from character to numeric as in metriques_all.
 # ----------------------------------------------------------
 
 metriques_vs_all <- rbind(
@@ -4412,13 +4546,18 @@ metriques_vs_all <- rbind(
   mutate(across(c(R2, MSE, MAE), as.numeric))
 ```
 
+*The table and chart below compare the out-of-sample $R^2$ of each model under the baseline and variety-specific specifications. A positive $ΔR^2$ indicates improvement under the variety-specific specification; a negative value indicates deterioration.*
+
 ```{r comparative_vs, message=FALSE, warning=FALSE}
 
+library(ggh4x)
+
 # ----------------------------------------------------------
-# COMPARATIVE PERFORMANCE — BASELINE VS VARIETY-SPECIFIC
-# For each model and series, the baseline R² (from
-# metriques_all, Section 4.7) is placed next to the
-# variety-specific R² computed just above.
+# STEP 1 — BUILD THE COMPARISON DATA FRAME
+# The baseline R² from metriques_all is joined to the
+# variety-specific R² from metriques_vs_all. Delta_R2 is
+# the difference between the two, positive values indicating
+# improvement under the variety-specific specification.
 # ----------------------------------------------------------
 
 df_comparison_vs <- metriques_all %>%
@@ -4432,34 +4571,56 @@ df_comparison_vs <- metriques_all %>%
     by = c("Model", "Series")
   ) %>%
   mutate(
-    Delta_R2     = round(R2_vs - R2_baseline, 4),
-    R2_baseline  = round(R2_baseline, 4),
-    R2_vs        = round(R2_vs, 4)
+    Delta_R2    = round(R2_vs - R2_baseline, 4),
+    R2_baseline = round(R2_baseline, 4),
+    R2_vs       = round(R2_vs, 4)
   )
 
-# Display Arabica table
-kable(df_comparison_vs %>% filter(Series == "Arabica") %>% select(-Series),
-      caption   = "Baseline vs variety-specific specification — Arabica (out-of-sample R²)",
-      booktabs  = TRUE,
-      col.names = c("Model", "R² (baseline)", "R² (variety-specific)", "ΔR²")) %>%
+
+# ----------------------------------------------------------
+# STEP 2 — DISPLAY THE COMPARISON TABLE
+# Models are sorted by decreasing baseline R² within each
+# series. pack_rows() adds colour-coded group headers for
+# Arabica and Robusta. The Delta_R2 column is coloured green
+# for positive values and red for negative values.
+# ----------------------------------------------------------
+
+df_comparison_vs %>%
+  arrange(Series, desc(R2_baseline)) %>%
+  select(Model, R2_baseline, R2_vs, Delta_R2) %>%
+  kable(caption   = "Baseline vs variety-specific specification — out-of-sample R²",
+        booktabs  = TRUE,
+        col.names = c("Model", "R² (baseline)",
+                      "R² (variety-specific)", "ΔR²")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = FALSE) %>%
+  row_spec(6, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 6,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 7, 12,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec") %>%
   column_spec(4, color = ifelse(
-    df_comparison_vs %>% filter(Series == "Arabica") %>% pull(Delta_R2) > 0,
+    df_comparison_vs %>%
+      arrange(Series, desc(R2_baseline)) %>%
+      pull(Delta_R2) > 0,
     "darkgreen", "red"))
 
-# Display Robusta table
-kable(df_comparison_vs %>% filter(Series == "Robusta") %>% select(-Series),
-      caption   = "Baseline vs variety-specific specification — Robusta (out-of-sample R²)",
-      booktabs  = TRUE,
-      col.names = c("Model", "R² (baseline)", "R² (variety-specific)", "ΔR²")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE) %>%
-  column_spec(4, color = ifelse(
-    df_comparison_vs %>% filter(Series == "Robusta") %>% pull(Delta_R2) > 0,
-    "darkgreen", "red"))
 
-# Bar chart
+# ----------------------------------------------------------
+# STEP 3 — BAR CHART
+# Models are ordered by decreasing baseline R² to match the
+# table ordering. The two specifications are shown side by
+# side within each model, faceted by coffee variety.
+# facet_wrap2() from ggh4x allows different strip background
+# colours per panel, using Arabica brown and Robusta green
+# consistent with the palette used throughout the document.
+# geom_text() adds R² labels above each bar for readability.
+# ----------------------------------------------------------
+
 metriques_vs_all %>%
   mutate(Specification = "Variety-specific") %>%
   bind_rows(
@@ -4467,24 +4628,47 @@ metriques_vs_all %>%
       mutate(across(c(R2, MSE, MAE), as.numeric),
              Specification = "Baseline")
   ) %>%
+  mutate(Model = factor(Model,
+                        levels = c("ARIMAX", "XGBoost", "SVM",
+                                   "Random Forest", "MLR", "ANN"))) %>%
   ggplot(aes(x = Model, y = R2, fill = Specification)) +
-  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
-  scale_fill_manual(values = c("Baseline" = "#95A5A6",
+  geom_bar(stat = "identity", position = "dodge",
+           alpha = 0.85, width = 0.7) +
+  geom_text(aes(label = round(R2, 3)),
+            position = position_dodge(width = 0.7),
+            vjust = -0.4, size = 2.5, fontface = "bold") +
+  scale_fill_manual(values = c("Baseline"         = "#95A5A6",
                                "Variety-specific" = "#2E5090")) +
-  facet_wrap(~ Series, ncol = 2) +
+  scale_y_continuous(limits = c(0, 1.05),
+                     breaks = seq(0, 1, 0.25)) +
+  facet_wrap2(~ Series, ncol = 2,
+              strip = strip_themed(
+                background_x = list(
+                  element_rect(fill = "#f5ece6"),
+                  element_rect(fill = "#e8f5ec")
+                ),
+                text_x = list(
+                  element_text(face = "bold", size = 11, color = "#8B4513"),
+                  element_text(face = "bold", size = 11, color = "#2E8B57")
+                )
+              )) +
   labs(title = "Baseline vs variety-specific specification — out-of-sample R²",
        x = NULL, y = expression(R^2), fill = NULL) +
   theme_minimal(base_size = 11) +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+  theme(
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(angle = 30, hjust = 1),
+    legend.position  = "top"
+  )
 ```
 
 The variety-specific specification yields asymmetric results across the two coffee varieties, revealing an important structural difference in how variety-relevant climate and supply information contributes to predictive accuracy.
 
-For Robusta, the variety-specific specification improves out-of-sample performance for three of the six models. ARIMAX gains marginally (+0.008, $R^2$=0.937), while Random Forest (+0.023) and XGBoost (+0.053) show more meaningful improvements — XGBoost in particular reaches $R^2$=0.849 under the variety-specific specification, its strongest result across all configurations tested in this study. This confirms the central hypothesis motivating this robustness check: using climate indices and fundamentals restricted to Brazil, Vietnam, Indonesia, Uganda, Côte d'Ivoire and India — the six countries assigned to the Robusta group — provides more relevant supply-side information than the global aggregates, which dilute the Robusta signal by including conditions in countries that produce virtually none. The improvement is most pronounced for the gradient boosting models, which are best placed to exploit the more targeted non-linear relationships between Robusta-specific supply conditions and price dynamics.
+**For Robusta**, the variety-specific specification improves out-of-sample performance for three of the six models. ARIMAX gains marginally (+0.008, $R^2$ = 0.937), while Random Forest (+0.026) and XGBoost (+0.053) show more meaningful improvements, with XGBoost in particular reaching $R^2$ = 0.849 under the variety-specific specification, its strongest result across all configurations tested in this study. This confirms the central hypothesis motivating this robustness check: using climate indices and fundamentals restricted to the six Robusta-producing countries provides more relevant supply-side information than the global aggregates, which dilute the Robusta signal by including conditions in countries that produce virtually none. The improvement is most pronounced for the gradient boosting models, which are best placed to exploit the more targeted non-linear relationships between Robusta-specific supply conditions and price dynamics.
 
-For Arabica, the picture is reversed. All six models deteriorate under the variety-specific specification, with ARIMAX losing 0.177 $R^2$ points and ANN producing a negative $R^2$ of −0.413. This result is counterintuitive at first glance but has a structural explanation. The global climate and supply indices used in the baseline specification are in practice already dominated by Arabica-producing countries — Brazil alone accounts for approximately 35% of world coffee production and 48.5% of the Arabica-specific weight. Switching to the variety-specific specification therefore changes the indices only marginally for Arabica, while simultaneously reducing the sample of fundamentals and potentially introducing noise from the variety split adjustments applied to mixed producers. The deterioration of ANN in particular reflects the sensitivity of that model to any perturbation of the input variables in the presence of a small training sample.
+**For Arabica**, the picture is reversed. All six models deteriorate under the variety-specific specification, with ARIMAX losing 0.177 $R^2$ points and ANN producing a negative $R^2$ of −0.413. This result is counterintuitive at first glance but has a structural explanation. The global climate and supply indices used in the baseline specification are in practice already dominated by Arabica-producing countries, as Brazil alone accounts for approximately 39% of world coffee production and approximately 47% of the Arabica-specific weight. Switching to the variety-specific specification therefore changes the indices only marginally for Arabica, while simultaneously reducing the sample of fundamentals and potentially introducing noise from the variety split adjustments applied to mixed producers. The deterioration of ANN in particular reflects the sensitivity of that model to any perturbation of the input variables in the presence of a small training sample.
 
-Taken together, these results suggest that variety-specific predictors are a genuine improvement for Robusta but not for Arabica, where the global specification already captures the relevant producing-country conditions. The XGBoost model under the Robusta variety-specific specification — $R^2$=0.849 — represents the strongest result for that variety across all configurations and specifications estimated in this study.
+Taken together, these results suggest that variety-specific predictors are a genuine improvement for Robusta but not for Arabica, where the global specification already captures the relevant producing-country conditions. The XGBoost model under the Robusta variety-specific specification ($R^2$= 0.849) represents the strongest result for that variety across all configurations and specifications estimated in this study.
 
 ## Robustness Check: OECD GDP Growth (Quarterly Specification)
 
