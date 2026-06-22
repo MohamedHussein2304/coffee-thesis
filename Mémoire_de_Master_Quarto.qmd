@@ -257,8 +257,6 @@ kable(table_vars,
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = TRUE) %>%
   collapse_rows(columns = 1, valign = "middle")
-
-stopifnot(nrow(table_vars) == ncol(dataset_mensuel) - 2)
 ```
 
 Two data availability constraints deserve explicit acknowledgement. First, Robusta futures prices from Refinitiv are available only from 2008 onward; the 96 months spanning 2000–2007 are therefore missing for this variable, and Robusta models are estimated on the 2008–2023 sub-period. Second, the CFTC Disaggregated COT report, which distinguishes Managed Money from commercial hedgers, was introduced in June 2006. The net speculative position variable accordingly contains missing values for the 77 months preceding June 2006, which is documented and handled in the modelling phase.
@@ -837,8 +835,9 @@ splits_variete <- df_usda %>%
   ) %>%
   arrange(desc(total))
 
-kable(splits_variete %>% select(Country_Name, arabica_disp, pct_monde_arabica,
-                                 robusta_disp, pct_monde_robusta),
+kable(splits_variete %>%
+        select(Country_Name, arabica_disp, pct_monde_arabica,
+               robusta_disp, pct_monde_robusta),
       caption   = "Variety splits — Arabica vs Robusta production share per country (2000–2024, USDA FAS PSD)",
       booktabs  = TRUE,
       col.names = c("Country", "Volume (% of country)", "% of group total",
@@ -846,7 +845,12 @@ kable(splits_variete %>% select(Country_Name, arabica_disp, pct_monde_arabica,
       align     = c("l", "r", "r", "r", "r")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
                 font_size = 11, full_width = FALSE) %>%
-  add_header_above(c(" " = 1, "Arabica" = 2, "Robusta" = 2))
+  add_header_above(c(" "       = 1,
+                     "Arabica" = 2,
+                     "Robusta" = 2),
+                   bold       = TRUE,
+                   color      = c("black", "#8B4513", "#2E8B57"),
+                   background = c("white", "#f5ece6", "#e8f5ec"))
 ```
 
 The variety split table confirms the expected production geography of the two coffee varieties. Eight countries produce exclusively or quasi-exclusively Arabica — Colombia, Ethiopia, Honduras, Peru, Costa Rica, Guatemala, Nicaragua and Mexico all report Arabica shares above 90%, and are therefore assigned entirely to the Arabica group. Brazil, the world's largest producer, is the only major country with a significant mixed production, reporting 72.3% Arabica and 27.7% Robusta over the 2000–2024 period. On the Robusta side, Vietnam and Côte d'Ivoire are quasi-pure Robusta producers at 96.8% and 100% respectively, while Indonesia (87.7%), Uganda (80.9%) and India (67.8%) produce predominantly but not exclusively Robusta.
@@ -866,8 +870,6 @@ Four countries contribute to both variety-specific indices: Brazil, India, Ugand
 # their empirically computed Arabica share as a scaling factor.
 # ----------------------------------------------------------
 
-# Variety splits for Arabica group
-# Pure producers (>90%) get 1.0, mixed producers get actual share
 split_arabica <- c(
   bresil      = 0.723,
   colombie    = 1.000,
@@ -883,22 +885,17 @@ split_arabica <- c(
   indonesie   = 0.123
 )
 
-# Extract raw production shares for Arabica countries
-# Vietnam and Cote d'Ivoire are excluded
-# as they are assigned to the Robusta group
-noms_arabica <- names(split_arabica)
-
-PARTS_ARABICA_RAW <- PARTS_PRODUCTION[
-  names(PARTS_PRODUCTION) %in% noms_arabica
-]
+# Extract raw production shares for Arabica countries.
+# Vietnam and Cote d'Ivoire are excluded as they are
+# assigned to the Robusta group.
+noms_arabica      <- names(split_arabica)
+PARTS_ARABICA_RAW <- PARTS_PRODUCTION[names(PARTS_PRODUCTION) %in% noms_arabica]
 
 # Apply variety split to adjust for mixed producers
-PARTS_ARABICA_ADJ <- PARTS_ARABICA_RAW *
-  split_arabica[names(PARTS_ARABICA_RAW)]
+PARTS_ARABICA_ADJ <- PARTS_ARABICA_RAW * split_arabica[names(PARTS_ARABICA_RAW)]
 
 # Normalise to unit sum
-POIDS_ARABICA <- PARTS_ARABICA_ADJ / sum(PARTS_ARABICA_ADJ,
-                                          na.rm = TRUE)
+POIDS_ARABICA <- PARTS_ARABICA_ADJ / sum(PARTS_ARABICA_ADJ, na.rm = TRUE)
 
 # Display verification table
 df_poids_arabica <- data.frame(
@@ -918,7 +915,10 @@ kable(df_poids_arabica,
       col.names = c("Country", "Raw share (%)", "Arabica split",
                     "Adjusted share (%)", "Final weight")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE)
+                font_size = 11, full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, background = "#8B4513", color = "white") %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(5, bold = TRUE, color = "#8B4513")
 ```
 
 *The same procedure is applied to the Robusta group. Six countries are assigned to this group, namely Vietnam, Indonesia, Uganda, Côte d'Ivoire, India and Brazil, with variety splits applied to the four mixed producers. Vietnam and Côte d'Ivoire are treated as pure Robusta producers given their shares of 96.8% and 100% respectively.*
@@ -934,7 +934,6 @@ kable(df_poids_arabica,
 # their empirically computed Robusta share as a scaling factor.
 # ----------------------------------------------------------
 
-# Variety splits for Robusta group
 split_robusta <- c(
   vietnam     = 1.000,
   indonesie   = 0.877,
@@ -945,19 +944,14 @@ split_robusta <- c(
 )
 
 # Extract raw production shares for Robusta countries
-noms_robusta <- names(split_robusta)
-
-PARTS_ROBUSTA_RAW <- PARTS_PRODUCTION[
-  names(PARTS_PRODUCTION) %in% noms_robusta
-]
+noms_robusta      <- names(split_robusta)
+PARTS_ROBUSTA_RAW <- PARTS_PRODUCTION[names(PARTS_PRODUCTION) %in% noms_robusta]
 
 # Apply variety split to adjust for mixed producers
-PARTS_ROBUSTA_ADJ <- PARTS_ROBUSTA_RAW *
-  split_robusta[names(PARTS_ROBUSTA_RAW)]
+PARTS_ROBUSTA_ADJ <- PARTS_ROBUSTA_RAW * split_robusta[names(PARTS_ROBUSTA_RAW)]
 
 # Normalise to unit sum
-POIDS_ROBUSTA <- PARTS_ROBUSTA_ADJ / sum(PARTS_ROBUSTA_ADJ,
-                                          na.rm = TRUE)
+POIDS_ROBUSTA <- PARTS_ROBUSTA_ADJ / sum(PARTS_ROBUSTA_ADJ, na.rm = TRUE)
 
 # Display verification table
 df_poids_robusta <- data.frame(
@@ -975,7 +969,10 @@ kable(df_poids_robusta,
       col.names = c("Country", "Raw share (%)", "Robusta split",
                     "Adjusted share (%)", "Final weight")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE)
+                font_size = 11, full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, background = "#2E8B57", color = "white") %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(5, bold = TRUE, color = "#2E8B57")
 ```
 
 ### Climate Data Source and Spatial Resolution
@@ -1535,6 +1532,9 @@ dataset_mensuel <- dates_cibles %>%
 write.csv(dataset_mensuel %>% select(-date_fmt),
           file.path(PATH_OUTPUT, "dataset_mensuel_final.csv"),
           row.names = FALSE)
+          
+# Verify that the variable inventory table matches the dataset dimensions
+stopifnot(nrow(table_vars) == ncol(dataset_mensuel) - 2)
 ```
 
 *This chunk produces a compact summary of the final dataset. Observation and variable counts are computed dynamically from the assembled data frame rather than hard-coded, so the table updates automatically if the analysis period or variable set changes. The dataset loses two columns in the count (`date` and `date_fmt`) since these are identifiers rather than analytical variables.*
