@@ -726,7 +726,7 @@ kable(prod_by_country,
 
 *This chunk converts the raw production shares computed in the previous chunk into normalised weights that sum exactly to one. These weights are the core of the climate index construction: every weighted average in the subsequent climate chunks is computed using `POIDS_PRODUCTION`. Two parallel vectors map official country names as they appear in the USDA PSD database to the internal identifiers used in the file lists defined in the setup chunk, ensuring that the correct weight is always matched to the correct file.*
 
-```{r poids_production, include=FALSE}
+```{r poids_production, echo=TRUE}
 
 # ----------------------------------------------------------
 # STEP 1 — DEFINE THE NAME MAPPING BETWEEN USDA AND FILES
@@ -2774,7 +2774,7 @@ metriques_arimax <- rbind(
 
 The ARIMAX model delivers strong out-of-sample performance on both series. For Arabica, the model achieves an $R^2$ of 0.821, with an MSE of 0.029 and an MAE of 0.131 USD/lb, indicating that it captures the broad price dynamics well over the test period. For Robusta, performance is even higher, with an $R^2$ of 0.929, an MSE of 11,194 and an MAE of 88.7 USD/tonne, confirming that the autoregressive structure of the model, combined with the exogenous variables, explains the vast majority of price variation in the test window. The order $(p,d,q)$ selected by `auto.arima()` at each walk-forward step varied across iterations, reflecting the adaptive nature of the estimation procedure.
 
-```{r arimax_order, include=FALSE}
+```{r arimax_order}
 # Report the ARIMA order selected on the full training set
 # for each series, for methodological transparency.
 cat("Arabica - ARIMA order selected by auto.arima():\n")
@@ -4309,7 +4309,7 @@ The robustness check conducted in the preceding section validated the production
 
 *This chunk defines the variety-specific exogenous variable lists and prepares the two datasets used in the re-estimation below. Sample sizes are printed to the console for verification.*
 
-```{r preprocessing_vs, message=FALSE, warning=FALSE, include=FALSE}
+```{r preprocessing_vs, message=FALSE, warning=FALSE}
 
 # ----------------------------------------------------------
 # VARIETY-SPECIFIC EXOGENOUS VARIABLE LISTS
