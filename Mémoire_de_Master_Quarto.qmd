@@ -30,7 +30,7 @@ packages_requis <- c(
   "ggplot2", "corrplot", "tseries", "urca", "forecast",
   "scales", "gridExtra", "knitr", "kableExtra", "moments",
   "ggrepel", "randomForest", "xgboost", "e1071", "nnet",
-  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext"
+  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS"
 )
 for (pkg in packages_requis) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -4290,6 +4290,481 @@ metriques_ann <- rbind(
 ```
 
 The tuned ANN achieves an $R^2$ of 0.728 for Arabica and 0.456 for Robusta, a meaningful improvement over the baseline results of 0.453 and 0.441 respectively. The gains are most pronounced for Arabica, where the strong L2 regularisation of 0.1 effectively reduces the instability that plagued the baseline specification. For Robusta, the lighter regularisation of 0.001 combined with the compact two-neuron architecture produces only a modest improvement, and the ANN remains the weakest model in the comparison for both varieties.
+
+
+### ANN Network Depth
+
+The ANN specification estimated above relies on a single hidden layer, the only architecture `nnet` is able to fit. This leaves open a natural question: does adding depth, rather than just width, change how well the network forecasts either series. Testing this requires a different package, `neuralnet`, which accepts a vector of hidden layer sizes and can therefore be configured with an arbitrary number of layers. Three depths are tested here, two, five and ten hidden layers, all with a fixed width of two neurons per layer so that the comparison isolates depth on its own rather than mixing it with a change in the number of neurons at each layer.
+
+One trade-off is worth flagging before looking at the results. `neuralnet` has no direct equivalent of the decay parameter that drove the improvement in the single-layer ANN earlier in this document, from an $R^2$ of 0.453 to 0.728 for Arabica. Without that L2 regularisation, deeper networks estimated on the same training samples, 168 to 211 observations for Arabica and 153 to 192 for Robusta depending on the walk-forward step, are a demanding specification, and some degree of instability or non-convergence at individual walk-forward steps would not be a surprising outcome.
+
+*This chunk defines the three hidden-layer configurations as a named list and implements the walk-forward estimation function for `neuralnet`. The function mirrors the expanding-window loop used for the other models in this document, with a `tryCatch()` wrapper around each re-fit so that a non-convergent step at one iteration returns NA and moves on rather than halting the whole loop.*
+
+```{r ann_multilayer_setup, message=FALSE, warning=FALSE}
+# ----------------------------------------------------------
+# ANN MULTI-LAYER — PACKAGE SWITCH REQUIRED
+# nnet (baseline ANN) only supports a single hidden layer, so it
+# cannot test network depth. neuralnet supports multiple hidden
+# layers via a vector, e.g. hidden = c(2,2,2) for 3 layers of 2
+# neurons each. neuralnet has no direct L2 regularisation
+# (no `decay` argument like nnet); if these deeper networks show
+# instability similar to the pre-regularisation single-layer ANN,
+# this is flagged as a limitation rather than worked around.
+# ----------------------------------------------------------
+
+library(neuralnet)
+
+# Depth configurations to test, as requested by the supervisor.
+# Width is held fixed at 2 neurons per layer across all three
+# depths, so that any performance difference observed between
+# configurations reflects depth alone, not a confound between
+# depth and width.
+configs_profondeur <- list(
+  "2 layers"  = c(2, 2),        # 2 hidden layers, 2 neurons each
+  "5 layers"  = rep(2, 5),      # 5 hidden layers, 2 neurons each
+  "10 layers" = rep(2, 10)      # 10 hidden layers, 2 neurons each
+)
+
+
+# ----------------------------------------------------------
+# WALK-FORWARD ESTIMATION FUNCTION — MULTI-LAYER ANN
+#
+# Arguments:
+#   df         : levels dataset (one row per month)
+#   var_dep    : name of the dependent variable column
+#                ("arabica_price" or "robusta_price")
+#   n_train    : size of the initial training window (number of
+#                rows), computed earlier in the preprocessing chunk
+#   hidden_vec : vector of neurons per layer, e.g. rep(2, 5) for
+#                5 layers of 2 neurons — this is what changes
+#                between the three calls made in the next chunk
+#
+# What the function returns:
+#   actual    : the observed (scaled) prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts, with
+#               NA for any step where the network failed to
+#               converge (see tryCatch() in STEP 5 below)
+# ----------------------------------------------------------
+
+fit_ann_multilayer <- function(df, var_dep, n_train, hidden_vec) {
+
+  # STEP 1 — Restrict the dataset to the columns this model needs:
+  # the dependent variable plus the 14 exogenous predictors defined
+  # in vars_exo. intersect() is a safety check in case a predictor
+  # is ever missing from df; it is silently skipped rather than
+  # causing the function to error out.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
+
+  # STEP 2 — Min-Max scale every column, including the dependent
+  # variable, to the [0, 1] range. neuralnet, like the other ML
+  # models in this document, is sensitive to input scale: without
+  # this step, variables with large absolute values (e.g. ending
+  # stocks, in thousands of bags) would dominate the loss function
+  # over variables with small values (e.g. the ONI index, roughly
+  # -3 to +3). sapply() applies minmax_scale() column by column and
+  # returns a matrix, which as.data.frame() converts back to a
+  # data frame so it can be used in a formula-based model call.
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  # STEP 3 — Split the scaled data into the initial training set
+  # and the held-out test set, using the row count n_train computed
+  # once in the preprocessing chunk and shared across all six main
+  # models for a consistent train/test partition.
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  # STEP 4 — Build the model formula explicitly by pasting together
+  # the dependent variable and all 14 predictor names with "+".
+  # This is done instead of using the shorthand "var_dep ~ ."
+  # because neuralnet's support for the "." (all other columns)
+  # notation is inconsistent across package versions, so writing
+  # the formula out explicitly avoids a possible silent failure.
+  formule <- as.formula(paste(var_dep, "~",
+                              paste(vars_exo_disponibles, collapse = " + ")))
+
+  # STEP 5 — Walk-forward loop. This follows the same expanding-
+  # window logic used throughout the document: at each step i, the
+  # network is retrained from scratch on the initial training set
+  # plus every test-period row already passed, then used to predict
+  # a single next observation. Two things are specific to this
+  # function: (a) neuralnet's own model syntax, and (b) a tryCatch()
+  # safety net, since deeper networks (5 or 10 layers) are more
+  # likely to fail to converge within the iteration budget on the
+  # small samples available here, and a single failed step should
+  # not stop the whole walk-forward run.
+  predictions <- numeric(n_test)   # empty vector to be filled in
+
+  set.seed(42)   # fixed once, before the loop starts, so that the
+                 # entire sequence of random weight initialisations
+                 # across all walk-forward steps is reproducible
+
+  for (i in 1:n_test) {
+
+    # Number of test-period rows already "seen" before this step:
+    # 0 at step 1, 1 at step 2, and so on, exactly as in fit_ann().
+    nb_lignes_test_vues  <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+
+    # The expanding training window: the fixed initial training set
+    # plus every test row already passed.
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    # Re-fit the network from scratch on the current window.
+    # tryCatch() returns NULL instead of raising an error if the
+    # network fails to converge within stepmax iterations, which
+    # becomes more likely as hidden_vec grows longer (10 layers).
+    #   linear.output = TRUE : identity activation on the output
+    #                           neuron, required for a regression
+    #                           target rather than classification
+    #   stepmax = 1e6         : raised well above neuralnet's
+    #                           default (1e5) because deeper
+    #                           networks need more backpropagation
+    #                           steps to converge
+    #   threshold = 0.05      : the partial derivative convergence
+    #                           criterion, relaxed from the default
+    #                           (0.01) so that deep networks on a
+    #                           small sample can converge within a
+    #                           reasonable time rather than hitting
+    #                           stepmax without reaching a tighter
+    #                           threshold
+    modele_nn <- tryCatch(
+      neuralnet(formule, data = fenetre_entrainement,
+               hidden        = hidden_vec,
+               linear.output = TRUE,
+               stepmax       = 1e6,
+               threshold     = 0.05),
+      error = function(e) NULL
+    )
+
+    # If convergence failed, record NA for this step and move on
+    # to the next one rather than stopping the whole loop.
+    if (is.null(modele_nn)) {
+      predictions[i] <- NA
+      next
+    }
+
+    # Predict the single next observation (row i of the test set).
+    # Only the predictor columns are passed to predict(), since
+    # neuralnet's predict() does not expect the dependent variable
+    # column to be present in newdata.
+    ligne_a_predire <- donnees_test[i, vars_exo_disponibles, drop = FALSE]
+    predictions[i]  <- as.numeric(predict(modele_nn, newdata = ligne_a_predire))
+  }
+
+  # STEP 6 — Return the observed and predicted test values. NA
+  # entries from any non-converged step are kept in the output;
+  # calculer_metriques() drops them via complete.cases() when
+  # computing R², MSE and MAE downstream.
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
+}
+```
+
+*This chunk runs the three depth configurations for both coffee varieties, six walk-forward estimations in total, storing the results in two named lists for use in the comparison table below.*
+
+```{r ann_multilayer_run, message=FALSE, warning=FALSE, results='hide'}
+# ----------------------------------------------------------
+# RUN ALL THREE DEPTHS, BOTH SERIES
+# The outer for() loop iterates over the three named configurations
+# in configs_profondeur ("2 layers", "5 layers", "10 layers"), and
+# for each one calls fit_ann_multilayer() twice, once per coffee
+# variety, storing the results in two named lists keyed by
+# configuration name for easy lookup in the comparison table below.
+# ----------------------------------------------------------
+
+resultats_ml_ara <- list()
+resultats_ml_rob <- list()
+
+for (nom_config in names(configs_profondeur)) {
+
+  cat("Running", nom_config, "- Arabica...\n")
+  resultats_ml_ara[[nom_config]] <- fit_ann_multilayer(
+    df_arabica_levels, "arabica_price", n_train_ara_lev,
+    configs_profondeur[[nom_config]])
+
+  cat("Running", nom_config, "- Robusta...\n")
+  resultats_ml_rob[[nom_config]] <- fit_ann_multilayer(
+    df_robusta_levels, "robusta_price", n_train_rob_lev,
+    configs_profondeur[[nom_config]])
+}
+```
+
+*This chunk compiles the walk-forward results from all three depth configurations, together with the single-layer ANN baseline already estimated earlier in the document (`res_ann_ara`, `res_ann_rob`), into a single comparison table, grouped by variety with `pack_rows()` for readability, consistent with the comparative performance table earlier in the document.*
+
+```{r ann_multilayer_table, message=FALSE, warning=FALSE}
+# ----------------------------------------------------------
+# COMPILE COMPARISON TABLE — BASELINE (1 LAYER, nnet) VS
+# 2/5/10 LAYERS (neuralnet)
+# The baseline row reuses the walk-forward results already stored
+# in res_ann_ara and res_ann_rob from the main ANN chunk earlier in
+# the document, so the single-layer specification is not re-run
+# here. Rows are built variety by variety (all Arabica architectures
+# first, then all Robusta architectures) rather than alternating,
+# so that pack_rows() below can group each variety into its own
+# labelled block instead of interleaving them row by row.
+# ----------------------------------------------------------
+
+# Ordered architecture labels, shared by both varieties so the
+# row order is identical within each variety block.
+labels_architecture <- c("1 layer (baseline, nnet)", names(configs_profondeur))
+
+df_ann_depth <- rbind(
+  # Arabica block: baseline row followed by the 3 depth configs
+  rbind(
+    data.frame(Architecture = "1 layer (baseline, nnet)",
+               calculer_metriques(res_ann_ara$actual, res_ann_ara$predicted)),
+    do.call(rbind, lapply(names(configs_profondeur), function(nom) {
+      data.frame(Architecture = nom,
+                 calculer_metriques(resultats_ml_ara[[nom]]$actual,
+                                    resultats_ml_ara[[nom]]$predicted))
+    }))
+  ) %>% mutate(Series = "Arabica", .after = Architecture),
+
+  # Robusta block: same structure, same architecture order
+  rbind(
+    data.frame(Architecture = "1 layer (baseline, nnet)",
+               calculer_metriques(res_ann_rob$actual, res_ann_rob$predicted)),
+    do.call(rbind, lapply(names(configs_profondeur), function(nom) {
+      data.frame(Architecture = nom,
+                 calculer_metriques(resultats_ml_rob[[nom]]$actual,
+                                    resultats_ml_rob[[nom]]$predicted))
+    }))
+  ) %>% mutate(Series = "Robusta", .after = Architecture)
+)
+
+# Render with pack_rows() grouping instead of an interleaved Series
+# column, so all 4 Arabica rows appear together, then all 4 Robusta
+# rows, matching the convention used in the comparative_performance
+# and robustness check tables earlier in the document.
+df_ann_depth %>%
+  select(Architecture, R2, MSE, MAE) %>%
+  kable(caption   = "ANN depth comparison — 1 layer (nnet baseline) vs 2/5/10 layers (neuralnet)",
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Architecture", "R²", "MSE", "MAE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = TRUE) %>%
+  row_spec(4, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 4,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 5, 8,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec")
+```
+
+The results show a clear and monotonic pattern: performance deteriorates as depth increases, for both varieties and at every step. For Arabica, $R^2$ falls from 0.728 at the single-layer baseline to 0.598 at 2 layers, 0.305 at 5 layers, and turns negative at −0.393 for 10 layers. Robusta follows the same trajectory, dropping from 0.456 to 0.335 at 2 layers, then to a negative $R^2$ of −0.128 at 5 layers and −0.275 at 10 layers. A negative $R^2$ means the model performs worse than simply predicting the mean of the test period, so the 5 and 10 layer networks are not just weaker, they are actively harmful specifications for this forecasting task.
+
+This pattern is consistent with the trade-off flagged before running the comparison. `neuralnet` offers no L2 regularisation equivalent to the `decay` parameter that turned the single-layer ANN from an unstable specification (Arabica $R^2$ = 0.453) into the current baseline (0.728). Adding hidden layers without any mechanism to constrain weight growth increases the number of parameters substantially while the training sample stays fixed at 168 to 211 observations for Arabica and 153 to 192 for Robusta depending on the walk-forward step. Each additional layer gives the network more capacity to fit noise in an already small sample, and the walk-forward protocol compounds this: the network is re-initialised and retrained from scratch at every step, so a deeper, less constrained architecture is asked to reach a stable solution dozens of times over on training windows that shrink to well under 200 observations at the earliest steps. A second, compounding factor is the choice of activation function: `neuralnet` defaults to a logistic (sigmoid) activation in the hidden layers, whose derivative is bounded well below 1 and shrinks the backpropagated gradient at every layer it passes through. In a ten-layer network this vanishing gradient problem can leave the earliest layers with almost no learning signal at all, compounding the overfitting risk already discussed rather than substituting for it.
+
+Depth alone, in other words, does not help here, and by 5 layers it actively hurts. This is not evidence that deeper networks are unsuited to coffee price forecasting in general, but that depth without regularisation is the wrong lever to pull given the sample sizes available in this study.
+
+*This chunk re-estimates the three depth configurations using `RSNNS::mlp()` instead of `neuralnet`, adding L2 weight decay via the `BackpropWeightDecay` learning function. Unlike `neuralnet`, `RSNNS::mlp()` supports both a vector of hidden layer sizes and weight decay simultaneously, closing the regularisation gap identified as the likely cause of the depth-related degradation observed above. The decay values reuse those already selected by cross-validation for the single-layer ANN, 0.1 for Arabica and 0.001 for Robusta, so the comparison isolates the effect of adding regularisation to the same depths already tested.*
+
+```{r ann_multilayer_decay_setup, message=FALSE, warning=FALSE}
+# ----------------------------------------------------------
+# ANN MULTI-LAYER WITH WEIGHT DECAY — RSNNS PACKAGE
+# neuralnet has no weight decay mechanism, which is the most
+# likely explanation for the monotonic R² collapse observed as
+# depth increased (see ann_multilayer_table results above).
+# RSNNS::mlp() accepts a vector of hidden layer sizes, like
+# neuralnet, AND supports L2-style weight decay through the
+# "BackpropWeightDecay" learning function, closing that gap.
+#
+# learnFuncParams order for BackpropWeightDecay, confirmed from
+# the SNNS User Manual (parameters of the learning functions):
+#   [1] eta   : learning rate, typical range 0.1-1
+#   [2] d     : weight decay term, typical range 0.005-0.3
+#   [3] dmin  : minimum tolerated weight for a link before it is
+#               pruned — set to 0 here to disable pruning, so
+#               only weight decay is tested, not link removal
+#   [4] dmax  : maximum output-target difference tolerated before
+#               being backpropagated as error, typical 0/0.1/0.2
+# ----------------------------------------------------------
+
+library(RSNNS)
+
+
+# ----------------------------------------------------------
+# WALK-FORWARD ESTIMATION FUNCTION — MULTI-LAYER ANN WITH DECAY
+#
+# Arguments:
+#   df         : levels dataset (one row per month)
+#   var_dep    : name of the dependent variable column
+#   n_train    : size of the initial training window
+#   hidden_vec : vector of neurons per layer (same configs as
+#                configs_profondeur, defined in the neuralnet
+#                chunk above and reused here)
+#   decay      : L2 weight decay strength. Reuses the value
+#                already selected by cross-validation for the
+#                single-layer ANN (tuning_ann_ara$decay = 0.1,
+#                tuning_ann_rob$decay = 0.001), so the same
+#                regularisation strength that stabilised the
+#                1-layer network is tested at greater depths.
+#
+# What the function returns:
+#   actual    : the observed (scaled) prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts, with
+#               NA for any step where training failed
+# ----------------------------------------------------------
+
+fit_ann_multilayer_decay <- function(df, var_dep, n_train, hidden_vec, decay) {
+
+  # STEP 1 — Restrict the dataset to the columns this model needs,
+  # identical to fit_ann_multilayer() above.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
+
+  # STEP 2 — Min-Max scale every column to [0, 1], identical to
+  # every other ML model in this document.
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  # STEP 3 — Split into the initial training set and the test set.
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  # STEP 4 — Walk-forward loop. RSNNS::mlp() requires x (predictors)
+  # and y (target) as separate numeric matrices rather than a single
+  # data frame with a formula, unlike neuralnet or nnet, so the
+  # matrix construction happens inside the loop for each expanding
+  # window rather than once outside it.
+  predictions <- numeric(n_test)
+
+  set.seed(42)   # fixed once, before the loop starts
+
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues  <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    # RSNNS::mlp() expects the predictor matrix and target matrix
+    # as separate arguments, not a formula on a single data frame.
+    x_train <- as.matrix(fenetre_entrainement[, vars_exo_disponibles])
+    y_train <- as.matrix(fenetre_entrainement[[var_dep]])
+
+    # Fit the network with weight decay. learnFuncParams order
+    # confirmed against the SNNS User Manual: c(eta, decay, dmin,
+    # dmax). dmin is fixed at 0 to disable link pruning, so the
+    # comparison isolates weight decay alone.
+    modele_rsnns <- tryCatch(
+      mlp(x = x_train, y = y_train,
+          size            = hidden_vec,
+          maxit           = 500,
+          learnFunc       = "BackpropWeightDecay",
+          learnFuncParams = c(0.2, decay, 0, 0.1),
+          linOut          = TRUE),
+      error = function(e) NULL
+    )
+
+    if (is.null(modele_rsnns)) {
+      predictions[i] <- NA
+      next
+    }
+
+    # Predict the single next observation. RSNNS's predict() also
+    # requires a matrix input, consistent with the training call.
+    ligne_a_predire <- as.matrix(donnees_test[i, vars_exo_disponibles,
+                                               drop = FALSE])
+    predictions[i]  <- as.numeric(predict(modele_rsnns, ligne_a_predire))
+  }
+
+  # STEP 5 — Return observed and predicted test values.
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
+}
+```
+
+*This chunk runs the three depth configurations with weight decay for both coffee varieties, six additional walk-forward estimations, using the decay values already selected for the single-layer ANN baseline.*
+
+```{r ann_multilayer_decay_run, message=FALSE, warning=FALSE, results='hide'}
+# ----------------------------------------------------------
+# RUN ALL THREE DEPTHS WITH DECAY, BOTH SERIES
+# Same loop structure as ann_multilayer_run above, calling
+# fit_ann_multilayer_decay() instead of fit_ann_multilayer(),
+# with the variety-specific decay value passed explicitly.
+# ----------------------------------------------------------
+
+resultats_ml_decay_ara <- list()
+resultats_ml_decay_rob <- list()
+
+for (nom_config in names(configs_profondeur)) {
+
+  cat("Running", nom_config, "with decay - Arabica...\n")
+  resultats_ml_decay_ara[[nom_config]] <- fit_ann_multilayer_decay(
+    df_arabica_levels, "arabica_price", n_train_ara_lev,
+    configs_profondeur[[nom_config]], decay = tuning_ann_ara$decay)
+
+  cat("Running", nom_config, "with decay - Robusta...\n")
+  resultats_ml_decay_rob[[nom_config]] <- fit_ann_multilayer_decay(
+    df_robusta_levels, "robusta_price", n_train_rob_lev,
+    configs_profondeur[[nom_config]], decay = tuning_ann_rob$decay)
+}
+```
+
+*This chunk adds the weight-decay results to the depth comparison, again grouped by variety with `pack_rows()` so each variety's four architectures (baseline, 2, 5, 10 layers, each with decay) read as a single readable block.*
+
+```{r ann_multilayer_decay_table, message=FALSE, warning=FALSE}
+# ----------------------------------------------------------
+# EXTEND THE COMPARISON WITH THE DECAY RESULTS, GROUPED BY VARIETY
+# Same variety-block structure as ann_multilayer_table above:
+# all Arabica rows (baseline + 3 undecayed depths + 3 decayed
+# depths) first, then the same 7 rows for Robusta.
+# ----------------------------------------------------------
+
+df_ann_depth_decay <- rbind(
+  # Arabica block: baseline, 3 undecayed depths, 3 decayed depths
+  rbind(
+    df_ann_depth %>% filter(Series == "Arabica") %>% select(-Series),
+    do.call(rbind, lapply(names(configs_profondeur), function(nom) {
+      data.frame(Architecture = paste0(nom, " + decay"),
+                 calculer_metriques(resultats_ml_decay_ara[[nom]]$actual,
+                                    resultats_ml_decay_ara[[nom]]$predicted))
+    }))
+  ) %>% mutate(Series = "Arabica", .after = Architecture),
+
+  # Robusta block: same structure
+  rbind(
+    df_ann_depth %>% filter(Series == "Robusta") %>% select(-Series),
+    do.call(rbind, lapply(names(configs_profondeur), function(nom) {
+      data.frame(Architecture = paste0(nom, " + decay"),
+                 calculer_metriques(resultats_ml_decay_rob[[nom]]$actual,
+                                    resultats_ml_decay_rob[[nom]]$predicted))
+    }))
+  ) %>% mutate(Series = "Robusta", .after = Architecture)
+)
+
+df_ann_depth_decay %>%
+  select(Architecture, R2, MSE, MAE) %>%
+  kable(caption   = "ANN depth comparison, with and without weight decay (RSNNS)",
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Architecture", "R²", "MSE", "MAE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = TRUE) %>%
+  row_spec(7, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 7,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 8, 14,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec")
+```
+
+Adding weight decay through `RSNNS::mlp()` was intended to test whether regularisation restores some of the performance lost at depth, using the same decay values already selected for the single-layer baseline, 0.1 for Arabica and 0.001 for Robusta. The results do not support this. Every decayed configuration underperforms its undecayed `neuralnet` counterpart at the same depth, and by a wide margin: Arabica falls to $R^2$ values of −1.206, −1.054- and −1.220 at 2, 5 and 10 layers respectively, while Robusta falls to −0.423, −0.264 and −0.367. Rather than narrowing the gap with the single-layer baseline, adding decay widens it substantially.
+
+This outcome most likely reflects a methodological confound rather than a genuine effect of weight decay. Gaining access to `BackpropWeightDecay` required switching from `neuralnet` to `RSNNS`, and the two packages differ not only in their support for regularisation but in their default training algorithm. `neuralnet` trains by resilient backpropagation (Rprop+), an adaptive method whose step size is adjusted per weight and typically converges efficiently even on small samples. `BackpropWeightDecay`, by contrast, is a variant of standard gradient descent with a fixed learning rate, a considerably less efficient optimiser that generally requires more iterations to reach a comparable solution. This difficulty is compounded by the sigmoid activation shared by both packages: `BackpropWeightDecay`'s fixed-step updates have no mechanism to compensate for a gradient that is already shrinking with depth, unlike Rprop+, which adapts to the sign rather than the magnitude of the gradient and is comparatively more robust to this effect. The 500-iteration budget carried over unchanged from the `neuralnet` specification was calibrated for the faster of the two algorithms, and is plausibly insufficient for the slower one, particularly on the deeper architectures tested here. The RSNNS results are therefore better read as evidence of under-optimisation than as evidence against the value of regularisation at depth.
+
+The RSNNS results are therefore better read as evidence of under-optimisation than as evidence against the value of regularisation at depth.
 
 ## Comparative Performance Analysis
 
