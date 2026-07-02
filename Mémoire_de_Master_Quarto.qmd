@@ -30,7 +30,7 @@ packages_requis <- c(
   "ggplot2", "corrplot", "tseries", "urca", "forecast",
   "scales", "gridExtra", "knitr", "kableExtra", "moments",
   "ggrepel", "randomForest", "xgboost", "e1071", "nnet",
-  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS"
+  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS", "glmnet"
 )
 for (pkg in packages_requis) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -2840,6 +2840,337 @@ The Arabica results are largely encouraging. COT net MM stands out as the strong
 The Robusta table is harder to read. WTI, Sugar and Consumption are significant with the expected signs, and COT net MM is again positive and significant, which is reassuring. But several other significant coefficients point in the wrong direction. CPI is negative and significant, DXY is positive and significant, Cocoa is negative and significant. These are not small numerical accidents. They are real reversals that need an explanation, and the most honest one is that 153 training observations and a VIF above 20 for CPI is simply too much collinearity for OLS to handle. The estimator ends up distributing explanatory power across correlated predictors in an arbitrary way, and the signs that come out the other end cannot be trusted as structural parameters.
 
 What both tables are really saying, when read together, is that MLR is not the right tool for this predictor set. Not because the variables are uninformative, but because OLS needs them to be separable, and they are not. The machine learning models that follow are better equipped for exactly this situation, since they do not need to isolate individual effects to produce accurate forecasts.
+
+### MLR Regularisation: LASSO and Ridge
+
+The coefficient tables and VIF diagnostics earlier in this section already showed the problem clearly: with VIF values reaching 21 to 49 for Production, Consumption and Exports, OLS simply cannot separate these predictors from one another, and the resulting coefficients are not to be trusted individually. Regularised regression is a natural way to test whether this actually matters for forecasting accuracy, not just for coefficient interpretation. Ridge shrinks every coefficient toward zero without ever removing a predictor entirely, which should help stabilise estimates in the presence of correlated regressors. LASSO goes further and can shrink some coefficients all the way to zero, effectively picking a subset of predictors on its own. Both are tested here using the same 14 predictors and the same walk-forward protocol as the rest of the document, so the comparison against the OLS baseline is on equal footing.
+
+One thing is worth flagging honestly. `cv.glmnet()` picks its penalty strength through k-fold cross-validation, and those folds are built by random sampling rather than respecting chronological order. At every walk-forward step, this means the internal search for the best penalty is allowed to mix earlier and later observations within the current training window, rather than strictly training on the past to validate on the future. This stays contained inside each training window, however: the test observations themselves are never touched by this cross-validation, so it does not leak into the reported out-of-sample results.
+
+*This chunk implements the walk-forward estimation function for regularised regression. `alpha_val` switches between LASSO ($\alpha=1$) and Ridge ($\alpha=0$) within the same `glmnet` call, so one function covers both specifications. At each step, `cv.glmnet()` re-selects the penalty strength on the current expanding training window before forecasting the next observation.*
+
+```{r mlr_regularized_setup, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# MLR REGULARISATION — LASSO AND RIDGE VIA glmnet
+# glmnet implements both LASSO (alpha = 1) and Ridge (alpha = 0)
+# regression within a single elastic-net framework, controlled by
+# the alpha parameter. This directly targets the multicollinearity
+# already documented in the OLS coefficient and VIF tables above:
+# Ridge shrinks all coefficients without removing any predictor,
+# while LASSO can shrink some coefficients exactly to zero,
+# effectively performing variable selection.
+# ----------------------------------------------------------
+
+library(glmnet)
+
+
+# ----------------------------------------------------------
+# WALK-FORWARD ESTIMATION FUNCTION — REGULARISED REGRESSION
+#
+# Arguments:
+#   df        : levels dataset (one row per month), same as used
+#               for the OLS MLR benchmark — regularised regression
+#               does not require Min-Max scaling for coefficient
+#               estimation, but glmnet internally standardises
+#               predictors by default (standardize = TRUE) before
+#               fitting, then reports coefficients back on the
+#               original scale, so no manual scaling step is
+#               needed here.
+#   var_dep   : name of the dependent variable column
+#               ("arabica_price" or "robusta_price")
+#   n_train   : size of the initial training window (number of
+#               rows), computed earlier in the preprocessing chunk
+#   alpha_val : 1 for LASSO, 0 for Ridge, passed through to
+#               cv.glmnet() and glmnet() unchanged
+#
+# What the function returns:
+#   actual    : the observed prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+# ----------------------------------------------------------
+
+fit_mlr_regularized <- function(df, var_dep, n_train, alpha_val) {
+
+  # STEP 1 — Restrict the dataset to the columns this model needs:
+  # the dependent variable plus the 14 exogenous predictors defined
+  # in vars_exo. Same safety check as every other model function
+  # in this document.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
+
+  # STEP 2 — Split into the initial training set and the test set,
+  # using the row count n_train computed once in the preprocessing
+  # chunk and shared across every model in this document for a
+  # consistent train/test partition.
+  n_total       <- nrow(df_modele)
+  donnees_train <- df_modele[1:n_train, ]
+  donnees_test  <- df_modele[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  # STEP 3 — Walk-forward loop. At each step, both the expanding
+  # training window and the single row to predict are converted to
+  # the matrix format glmnet requires (it does not accept a formula
+  # on a data frame the way lm() does), then cv.glmnet() re-selects
+  # the penalty strength lambda via 5-fold cross-validation on the
+  # current window before fitting the final model and predicting
+  # the next observation.
+  predictions <- numeric(n_test)   # empty vector to be filled in
+
+  for (i in 1:n_test) {
+
+    # Number of test-period rows already "seen" before this step:
+    # 0 at step 1, 1 at step 2, and so on, exactly as in fit_mlr().
+    nb_lignes_test_vues  <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+
+    # The expanding training window: the fixed initial training set
+    # plus every test row already passed.
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    # glmnet requires the predictor matrix and target vector as
+    # separate arguments, not a formula on a single data frame.
+    x_train <- as.matrix(fenetre_entrainement[, vars_exo_disponibles])
+    y_train <- fenetre_entrainement[[var_dep]]
+
+    # cv.glmnet() fits the full regularisation path and selects the
+    # lambda value that minimises cross-validated MSE. nfolds = 5
+    # (rather than the default 10) keeps computation manageable
+    # given this is repeated at every one of the ~40 walk-forward
+    # steps, for both varieties and both alpha values.
+    set.seed(42)
+    modele_cv <- cv.glmnet(x_train, y_train,
+                           alpha  = alpha_val,
+                           nfolds = 5)
+
+    # Predict the single next observation (row i of the test set)
+    # using the lambda that minimised cross-validated error
+    # (s = "lambda.min"). glmnet's predict() also requires a matrix
+    # input, consistent with the training call.
+    ligne_a_predire <- as.matrix(donnees_test[i, vars_exo_disponibles,
+                                               drop = FALSE])
+    predictions[i]  <- as.numeric(predict(modele_cv, newx = ligne_a_predire,
+                                          s = "lambda.min"))
+  }
+
+  # STEP 4 — Return the observed and predicted test values.
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
+}
+```
+
+*This chunk runs LASSO and Ridge for both coffee varieties, four walk-forward estimations in total, storing the results for the comparison table below.*
+
+```{r mlr_regularized_run, message=FALSE, warning=FALSE, results='hide'}
+
+# ----------------------------------------------------------
+# RUN LASSO AND RIDGE, BOTH SERIES
+# alpha = 1 for LASSO, alpha = 0 for Ridge, following glmnet's
+# convention. Results are stored in separate named objects rather
+# than a list, consistent with how the six main models store their
+# results (res_mlr_ara, res_arimax_ara, etc.) elsewhere in the
+# document.
+# ----------------------------------------------------------
+
+cat("Running LASSO - Arabica...\n")
+res_lasso_ara <- fit_mlr_regularized(df_arabica_levels, "arabica_price",
+                                     n_train_ara_lev, alpha_val = 1)
+
+cat("Running LASSO - Robusta...\n")
+res_lasso_rob <- fit_mlr_regularized(df_robusta_levels, "robusta_price",
+                                     n_train_rob_lev, alpha_val = 1)
+
+cat("Running Ridge - Arabica...\n")
+res_ridge_ara <- fit_mlr_regularized(df_arabica_levels, "arabica_price",
+                                     n_train_ara_lev, alpha_val = 0)
+
+cat("Running Ridge - Robusta...\n")
+res_ridge_rob <- fit_mlr_regularized(df_robusta_levels, "robusta_price",
+                                     n_train_rob_lev, alpha_val = 0)
+```
+
+*This chunk compiles the LASSO and Ridge results alongside the OLS baseline already estimated earlier in this section (`res_mlr_ara`, `res_mlr_rob`), grouped by variety with `pack_rows()` for readability*
+
+```{r mlr_regularized_table, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# COMPILE COMPARISON TABLE — OLS VS LASSO VS RIDGE
+# Rows are built variety by variety (all Arabica specifications
+# first, then all Robusta specifications) so that pack_rows() below
+# groups each variety into its own labelled block instead of
+# alternating row by row.
+# ----------------------------------------------------------
+
+df_mlr_reg <- rbind(
+  # Arabica block: OLS baseline, then LASSO, then Ridge
+  rbind(
+    data.frame(Specification = "OLS (baseline)",
+               calculer_metriques(res_mlr_ara$actual, res_mlr_ara$predicted)),
+    data.frame(Specification = "LASSO",
+               calculer_metriques(res_lasso_ara$actual, res_lasso_ara$predicted)),
+    data.frame(Specification = "Ridge",
+               calculer_metriques(res_ridge_ara$actual, res_ridge_ara$predicted))
+  ) %>% mutate(Series = "Arabica", .after = Specification),
+
+  # Robusta block: same structure
+  rbind(
+    data.frame(Specification = "OLS (baseline)",
+               calculer_metriques(res_mlr_rob$actual, res_mlr_rob$predicted)),
+    data.frame(Specification = "LASSO",
+               calculer_metriques(res_lasso_rob$actual, res_lasso_rob$predicted)),
+    data.frame(Specification = "Ridge",
+               calculer_metriques(res_ridge_rob$actual, res_ridge_rob$predicted))
+  ) %>% mutate(Series = "Robusta", .after = Specification)
+)
+
+df_mlr_reg %>%
+  select(Specification, R2, MSE, MAE) %>%
+  kable(caption   = "MLR regularisation comparison — OLS vs LASSO vs Ridge",
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Specification", "R²", "MSE", "MAE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = TRUE) %>%
+  row_spec(3, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 3,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 4, 6,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec")
+```
+
+The two varieties pull in opposite directions here, and the split lines up with what the VIF diagnostics already showed earlier in this section. For Arabica, regularisation makes things worse: $R^2$ drops from 0.784 under OLS to 0.742 for LASSO and 0.696 for Ridge, getting steadily worse as the penalty becomes less selective. Robusta tells the opposite story. $R^2$ climbs from 0.276 under OLS all the way to 0.385 for LASSO and 0.464 for Ridge, which makes Ridge the strongest linear specification tested for this variety by a comfortable margin, more than doubling what OLS alone was able to explain.
+
+The reason for this split isn't hard to find. Robusta's OLS model is already working with a shorter sample, 153 training observations against 211 for Arabica, and its predictors are more severely collinear, exactly the conditions VIF flagged earlier. This is precisely the situation where regularisation earns its keep: shrinking the coefficients gives up a little bias in exchange for a real reduction in variance, and that trade is worth making when the sample is short and the predictors won't separate cleanly. Arabica starts from a better place. Its longer, more stable sample means OLS has less variance to trade away, so the same shrinkage mostly just adds bias without buying much back, and the result is a steady decline instead of an improvement.
+
+Comparing LASSO against Ridge within each variety adds a further layer. Ridge wins for Robusta, which suggests the predictive signal there is spread thinly across many correlated variables rather than concentrated in a handful, which is exactly the setting Ridge handles well since it shrinks everything together instead of picking winners. For Arabica, LASSO holds up better than Ridge, and that points the same way from the other side: Arabica's OLS coefficients were already reasonably well-behaved, so a method that can keep the most informative predictors close to their unregularised values does less harm than one that shrinks all fourteen indiscriminately.
+
+The performance comparison above shows that regularisation helps or hurts depending on the variety, but it says nothing about how each method actually reshapes the regression itself. Looking at the coefficients directly answers that question, and does so in a way that speaks to the difference in variable importance between Arabica and Robusta noted during supervision: LASSO's ability to shrink coefficients exactly to zero amounts to an automatic variable selection procedure, so comparing which predictors survive for each variety offers a direct, model-based view of where the two markets diverge.
+
+*This chunk extracts and compares the OLS, LASSO and Ridge coefficients estimated on the full initial training window for each coffee variety. Unlike the walk-forward loop above, which re-estimates the penalty at every step purely to generate forecasts, this chunk fits each model once on the training window only, mirroring the approach already used for the OLS coefficient table. LASSO coefficients shrunk exactly to zero are highlighted, since these represent variables the model effectively drops from the specification.*
+
+```{r mlr_regularized_coefficients, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# OLS vs LASSO vs RIDGE — COEFFICIENT COMPARISON
+# All three models are fit once on the full initial training
+# window, the same window used for the OLS and ARIMAX coefficient
+# tables earlier in the document, rather than inside the
+# walk-forward loop. This keeps the comparison focused on what
+# each method does to the same fixed set of coefficients, without
+# the added complexity of 40+ re-estimations per model.
+# ----------------------------------------------------------
+
+# ----------------------------------------------------------
+# REUSABLE EXTRACTION FUNCTION
+#
+# Arguments:
+#   df_levels      : levels dataset (complete cases only)
+#   var_dep        : name of the dependent variable column
+#   n_train        : size of the initial training window
+#   couleur_header : hex colour for the table header row
+#   caption_text   : caption string passed to kable()
+# ----------------------------------------------------------
+
+extraire_coefs_regularized <- function(df_levels, var_dep, n_train,
+                                        couleur_header, caption_text) {
+
+  # STEP 1 — Isolate the training window and build the matrix/vector
+  # inputs glmnet requires. x_train column order follows vars_exo,
+  # which is the same order coef() returns coefficients in below.
+  fenetre_train <- df_levels[1:n_train, c(var_dep, vars_exo)]
+  x_train       <- as.matrix(fenetre_train[, vars_exo])
+  y_train       <- fenetre_train[[var_dep]]
+
+  # STEP 2 — Fit OLS on the same window, for the baseline column.
+  # This mirrors extraire_coefs_mlr() above; the intercept is
+  # dropped since it carries no economic interpretation in a
+  # levels regression with trending variables.
+  modele_lm <- lm(as.formula(paste(var_dep, "~ .")), data = fenetre_train)
+  coef_ols  <- coef(modele_lm)[vars_exo]   # drop intercept, fix order
+
+  # STEP 3 — Fit LASSO (alpha = 1) via 5-fold cross-validation to
+  # select the penalty strength, then extract coefficients at the
+  # lambda that minimised cross-validated error. coef() on a
+  # cv.glmnet object returns a sparse matrix with the intercept as
+  # the first row; [-1] drops it, and as.numeric() converts the
+  # sparse column to a plain vector.
+  set.seed(42)
+  cv_lasso    <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 5)
+  coef_lasso  <- as.numeric(coef(cv_lasso, s = "lambda.min"))[-1]
+  names(coef_lasso) <- vars_exo
+
+  # STEP 4 — Same procedure for Ridge (alpha = 0).
+  set.seed(42)
+  cv_ridge    <- cv.glmnet(x_train, y_train, alpha = 0, nfolds = 5)
+  coef_ridge  <- as.numeric(coef(cv_ridge, s = "lambda.min"))[-1]
+  names(coef_ridge) <- vars_exo
+
+  # STEP 5 — Assemble the comparison table. dropped_lasso flags
+  # variables LASSO shrunk exactly to zero, i.e. effectively
+  # removed from the specification.
+  df_coef <- data.frame(
+    Variable      = labels_mlr[vars_exo],
+    OLS           = round(coef_ols,   4),
+    LASSO         = round(coef_lasso, 4),
+    Ridge         = round(coef_ridge, 4),
+    dropped_lasso = coef_lasso == 0,
+    row.names     = NULL
+  )
+
+  # STEP 6 — Render with the LASSO column greyed out and italicised
+  # wherever the coefficient was shrunk to zero, so dropped
+  # variables are visually distinct from retained ones at a glance.
+  kable(df_coef %>% select(-dropped_lasso),
+        caption   = caption_text,
+        booktabs  = TRUE,
+        row.names = FALSE,
+        col.names = c("Variable", "OLS", "LASSO", "Ridge")) %>%
+    kable_styling(bootstrap_options = c("striped", "hover"),
+                  font_size = 11, full_width = TRUE) %>%
+    column_spec(3,
+                color  = ifelse(df_coef$dropped_lasso, "grey60", "black"),
+                italic = df_coef$dropped_lasso) %>%
+    row_spec(0, bold = TRUE,
+             background = couleur_header, color = "white")
+}
+
+
+# ----------------------------------------------------------
+# ARABICA COEFFICIENT COMPARISON
+# ----------------------------------------------------------
+
+extraire_coefs_regularized(
+  df_levels      = df_arabica_levels,
+  var_dep        = "arabica_price",
+  n_train        = n_train_ara_lev,
+  couleur_header = "#8B4513",
+  caption_text   = "OLS, LASSO and Ridge coefficients — Arabica (full training set)"
+)
+
+
+# ----------------------------------------------------------
+# ROBUSTA COEFFICIENT COMPARISON
+# ----------------------------------------------------------
+
+extraire_coefs_regularized(
+  df_levels      = df_robusta_levels,
+  var_dep        = "robusta_price",
+  n_train        = n_train_rob_lev,
+  couleur_header = "#2E8B57",
+  caption_text   = "OLS, LASSO and Ridge coefficients — Robusta (full training set)"
+)
+```
+
+The coefficient tables reveal something the performance comparison alone could not: LASSO barely performs variable selection here at all. Across 28 coefficients (14 predictors × 2 varieties), only two are shrunk exactly to zero, CPI for Arabica and Temperature for Robusta. Every other predictor is retained by LASSO at a magnitude close to its OLS counterpart, meaning the performance gains and losses documented above come almost entirely from shrinkage, not from dropping variables.
+
+The two variables LASSO does eliminate are not arbitrary. CPI carries the highest VIF among all Arabica predictors (above 27, as shown in the earlier VIF table) and was already flagged as a source of unreliable OLS estimates. Temperature is Robusta's most unstable coefficient of all: its OLS estimate is positive (0.516), consistent with no clear physical story, while Ridge pushes it to a large negative value (−12.706), and LASSO drops it entirely rather than trying to resolve the disagreement. A coefficient whose sign depends on which estimator is used is not one that should be read as evidence of a genuine physical relationship between temperature and Robusta prices; it is a symptom of the same collinearity documented throughout this section, and LASSO's response, to remove it, is arguably the most honest of the three.
+
+Ridge tells a more nuanced story than "shrinkage" alone would suggest. Most coefficients do shrink toward zero relative to OLS, as expected: the Fed Funds Rate falls from 46.01 to 26.37 for Robusta, DXY from 15.39 to 8.53, CPI from −20.75 to −5.57. But a few move in the opposite direction. Arabica's ONI coefficient grows from −0.007 under OLS to −0.024 under Ridge, more than tripling in magnitude despite the overall regularisation. This is a known property of Ridge in the presence of severe collinearity: OLS can artificially suppress a coefficient when its effect is entangled with correlated predictors, and Ridge, by redistributing weight more evenly across the correlated group, can partially "free" that coefficient rather than shrink it. Far from contradicting the regularisation story, this reinforces it: the OLS coefficients reported earlier in this section were never a reliable guide to individual effect sizes to begin with.
+
+Read together with the performance results, this offers a partial answer to why variable importance differs between the two varieties. Robusta's predictors are more severely entangled, evidenced by the Temperature sign reversal and the larger absolute shrinkage Ridge applies across the board, and it is precisely this variety where regularisation delivers the larger performance gain. Arabica's coefficients are comparatively better-behaved to begin with, which is consistent with regularisation having less to fix and, in this case, making things marginally worse rather than better.
 
 ## ARIMAX
 
