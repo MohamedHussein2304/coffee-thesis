@@ -3733,6 +3733,279 @@ metriques_rf <- rbind(
 
 The Random Forest model achieves an $R^2$ of 0.811 for Arabica and 0.695 for Robusta. The model's ensemble structure, averaging predictions across 500 decision trees, provides robustness to outliers and non-linear relationships that the linear benchmarks cannot capture. The walk-forward re-estimation at each step ensures that the model is never trained on future observations, mitigating overfitting concerns that would arise under standard cross-validation. Performance on Robusta is somewhat lower than on Arabica, consistent with the shorter and more volatile training sample available for this variety.
 
+### Random Forest: Tree Count and Complexity Tuning
+
+The Random Forest specification estimated above uses 500 trees with no explicit control on tree complexity beyond randomForest's defaults. This section tests whether varying the number of trees, or constraining individual tree complexity, changes out-of-sample performance. Three levers are tested separately, each isolated by holding the other two at their default value: the number of trees (`ntree`), the minimum size of a terminal node (`nodesize`, R's closest equivalent to the pruning-style complexity control requested during supervision, since `randomForest` has no `cp` parameter, that being specific to a single `rpart` tree), and the maximum number of terminal nodes allowed per tree (`maxnodes`).
+
+*This chunk defines a generic Random Forest estimation function that accepts `ntree`, `nodesize` and `maxnodes` as arguments, alongside the three configuration lists to be tested. The function mirrors the walk-forward structure of `fit_rf()` above, with the three complexity parameters exposed rather than hard-coded, so the same function serves all three comparisons in this section.*
+
+```{r rf_tuning_setup, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# RANDOM FOREST — TREE COUNT AND COMPLEXITY TUNING
+# randomForest has no cp (complexity parameter) argument, since cp
+# is specific to a single rpart tree and its cost-complexity pruning
+# procedure; a Random Forest never prunes individual trees that way.
+# The closest available levers for controlling the complexity of the
+# trees grown within a Random Forest are nodesize (minimum size of a
+# terminal node — larger values force shallower, simpler trees) and
+# maxnodes (a hard cap on the number of terminal nodes per tree).
+# Both are tested here alongside ntree (the number of trees), each
+# varied separately while the other two are held at randomForest's
+# defaults (ntree = 500, nodesize = 5 for regression, maxnodes = NULL
+# i.e. unconstrained), so that each comparison isolates one lever.
+# ----------------------------------------------------------
+
+# Configurations to test, one list per lever. Values are stored as
+# named lists so the name (used as a row label in the results table)
+# and the actual argument value are kept together.
+configs_ntree <- list(
+  "ntree = 100"  = 100,
+  "ntree = 300"  = 300,
+  "ntree = 1000" = 1000
+)
+
+configs_nodesize <- list(
+  "nodesize = 1"  = 1,
+  "nodesize = 10" = 10,
+  "nodesize = 20" = 20
+)
+
+configs_maxnodes <- list(
+  "maxnodes = 10"  = 10,
+  "maxnodes = 50"  = 50,
+  "maxnodes = 100" = 100
+)
+
+
+# ----------------------------------------------------------
+# WALK-FORWARD ESTIMATION FUNCTION — RANDOM FOREST, TUNABLE
+#
+# Arguments:
+#   df       : levels dataset (one row per month)
+#   var_dep  : name of the dependent variable column
+#              ("arabica_price" or "robusta_price")
+#   n_train  : size of the initial training window (number of rows),
+#              computed earlier in the preprocessing chunk
+#   ntree    : number of trees to grow, default 500 to match the
+#              baseline Random Forest specification above
+#   nodesize : minimum size of a terminal node, default 5, the
+#              randomForest default for regression
+#   maxnodes : maximum number of terminal nodes per tree, default
+#              NULL (no limit), the randomForest default
+#
+# What the function returns:
+#   actual    : the observed (scaled) prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+# ----------------------------------------------------------
+
+fit_rf_tuned <- function(df, var_dep, n_train,
+                          ntree = 500, nodesize = 5, maxnodes = NULL) {
+
+  # STEP 1 — Restrict the dataset to the columns this model needs,
+  # identical to fit_rf() above.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
+
+  # STEP 2 — Min-Max scale every column, including the dependent
+  # variable, to the [0, 1] range, identical to every other ML
+  # model in this document.
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  # STEP 3 — Split into the initial training set and the test set.
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  # STEP 4 — Walk-forward loop. Identical expanding-window logic to
+  # fit_rf() above: at each step, a brand new forest is grown on the
+  # initial training set plus every test row already passed, using
+  # the ntree/nodesize/maxnodes values passed in as arguments rather
+  # than hard-coded, so the same loop serves all three comparisons
+  # in this section.
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
+
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues  <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    foret <- randomForest(formule, data = fenetre_entrainement,
+                          ntree    = ntree,
+                          nodesize = nodesize,
+                          maxnodes = maxnodes)
+
+    ligne_a_predire <- donnees_test[i, ]
+    predictions[i]  <- predict(foret, newdata = ligne_a_predire)
+  }
+
+  # STEP 5 — Return the observed and predicted test values.
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
+}
+```
+
+*This chunk runs all three sets of configurations, for both coffee varieties, holding the other two parameters at their `randomForest` default in each case.*
+
+```{r rf_tuning_run, message=FALSE, warning=FALSE, results='hide'}
+# ----------------------------------------------------------
+# RUN ALL THREE PARAMETER SWEEPS, BOTH SERIES
+# Each of the three outer loops iterates over one configuration list
+# (configs_ntree, configs_nodesize, configs_maxnodes), calling
+# fit_rf_tuned() with only that one parameter changed from its
+# default, so each comparison isolates a single lever. Results are
+# stored in six named lists (one per lever, per variety).
+# ----------------------------------------------------------
+
+resultats_ntree_ara    <- list()
+resultats_ntree_rob    <- list()
+resultats_nodesize_ara <- list()
+resultats_nodesize_rob <- list()
+resultats_maxnodes_ara <- list()
+resultats_maxnodes_rob <- list()
+
+for (nom_config in names(configs_ntree)) {
+  cat("Running", nom_config, "- Arabica...\n")
+  resultats_ntree_ara[[nom_config]] <- fit_rf_tuned(
+    df_arabica_levels, "arabica_price", n_train_ara_lev,
+    ntree = configs_ntree[[nom_config]])
+
+  cat("Running", nom_config, "- Robusta...\n")
+  resultats_ntree_rob[[nom_config]] <- fit_rf_tuned(
+    df_robusta_levels, "robusta_price", n_train_rob_lev,
+    ntree = configs_ntree[[nom_config]])
+}
+
+for (nom_config in names(configs_nodesize)) {
+  cat("Running", nom_config, "- Arabica...\n")
+  resultats_nodesize_ara[[nom_config]] <- fit_rf_tuned(
+    df_arabica_levels, "arabica_price", n_train_ara_lev,
+    nodesize = configs_nodesize[[nom_config]])
+
+  cat("Running", nom_config, "- Robusta...\n")
+  resultats_nodesize_rob[[nom_config]] <- fit_rf_tuned(
+    df_robusta_levels, "robusta_price", n_train_rob_lev,
+    nodesize = configs_nodesize[[nom_config]])
+}
+
+for (nom_config in names(configs_maxnodes)) {
+  cat("Running", nom_config, "- Arabica...\n")
+  resultats_maxnodes_ara[[nom_config]] <- fit_rf_tuned(
+    df_arabica_levels, "arabica_price", n_train_ara_lev,
+    maxnodes = configs_maxnodes[[nom_config]])
+
+  cat("Running", nom_config, "- Robusta...\n")
+  resultats_maxnodes_rob[[nom_config]] <- fit_rf_tuned(
+    df_robusta_levels, "robusta_price", n_train_rob_lev,
+    maxnodes = configs_maxnodes[[nom_config]])
+}
+```
+
+*This chunk compiles all three comparisons, together with the baseline Random Forest already estimated earlier in this section (`res_rf_ara`, `res_rf_rob`), into a single table grouped by variety with `pack_rows()`, consistent with the ANN depth and MLR regularisation tables elsewhere in the document.*
+
+```{r rf_tuning_table, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# COMPILE COMPARISON TABLE — BASELINE VS ntree / nodesize / maxnodes
+# Each variety block now carries a Group column (Baseline, Number of
+# Trees, Node Size, Max Nodes) in addition to Parameter, so that a
+# second, nested level of pack_rows() can visually separate the three
+# parameter families within each variety, on top of the existing
+# outer grouping by variety.
+# ----------------------------------------------------------
+
+construire_bloc_rf <- function(nom_serie, res_baseline,
+                                res_ntree, res_nodesize, res_maxnodes) {
+  rbind(
+    data.frame(Group = "Baseline",
+               Parameter = "ntree = 500, nodesize = 5, maxnodes = none",
+               calculer_metriques(res_baseline$actual, res_baseline$predicted)),
+    do.call(rbind, lapply(names(res_ntree), function(nom) {
+      data.frame(Group = "Number of Trees (ntree)", Parameter = nom,
+                 calculer_metriques(res_ntree[[nom]]$actual,
+                                    res_ntree[[nom]]$predicted))
+    })),
+    do.call(rbind, lapply(names(res_nodesize), function(nom) {
+      data.frame(Group = "Node Size (nodesize)", Parameter = nom,
+                 calculer_metriques(res_nodesize[[nom]]$actual,
+                                    res_nodesize[[nom]]$predicted))
+    })),
+    do.call(rbind, lapply(names(res_maxnodes), function(nom) {
+      data.frame(Group = "Max Nodes (maxnodes)", Parameter = nom,
+                 calculer_metriques(res_maxnodes[[nom]]$actual,
+                                    res_maxnodes[[nom]]$predicted))
+    }))
+  ) %>% mutate(Series = nom_serie, .after = Group)
+}
+
+df_rf_tuning <- rbind(
+  construire_bloc_rf("Arabica", res_rf_ara,
+                     resultats_ntree_ara, resultats_nodesize_ara,
+                     resultats_maxnodes_ara),
+  construire_bloc_rf("Robusta", res_rf_rob,
+                     resultats_ntree_rob, resultats_nodesize_rob,
+                     resultats_maxnodes_rob)
+)
+
+# ----------------------------------------------------------
+# RENDER WITH TWO NESTED GROUPING LEVELS
+# The outer pack_rows() calls (Arabica / Robusta) use the same bold,
+# coloured style as every other variety-grouped table in this
+# document. The inner pack_rows() calls, added afterwards, use a
+# lighter grey italic style with no background fill, so the four
+# parameter families read as sub-headers nested inside each variety
+# block rather than competing visually with the main grouping.
+# Row indices for both levels refer to the row numbers of the
+# original 20-row table (10 per variety), consistent with how
+# pack_rows() is used elsewhere for single-level grouping.
+# ----------------------------------------------------------
+
+df_rf_tuning %>%
+  select(Parameter, R2, MSE, MAE) %>%
+  kable(caption   = "Random Forest — tree count and complexity tuning",
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Parameter", "R²", "MSE", "MAE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = TRUE) %>%
+  row_spec(10, extra_css = "border-bottom: 2px solid #333;") %>%
+  # Outer grouping: variety blocks
+  pack_rows("Arabica", 1, 10,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 11, 20,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec") %>%
+  # Inner grouping: parameter families within each variety
+  pack_rows("Number of Trees (ntree)", 2, 4,
+            bold = FALSE, italic = TRUE, color = "grey40") %>%
+  pack_rows("Node Size (nodesize)", 5, 7,
+            bold = FALSE, italic = TRUE, color = "grey40") %>%
+  pack_rows("Max Nodes (maxnodes)", 8, 10,
+            bold = FALSE, italic = TRUE, color = "grey40") %>%
+  pack_rows("Number of Trees (ntree)", 12, 14,
+            bold = FALSE, italic = TRUE, color = "grey40") %>%
+  pack_rows("Node Size (nodesize)", 15, 17,
+            bold = FALSE, italic = TRUE, color = "grey40") %>%
+  pack_rows("Max Nodes (maxnodes)", 18, 20,
+            bold = FALSE, italic = TRUE, color = "grey40")
+```
+
+Across all three levers, the results tell a consistent story: the number of trees barely matters, while the two complexity controls, `nodesize` and `maxnodes`, matter a great deal, and in the same direction. Allowing individual trees to grow more complex, that is, more freely, improves performance up to a point, but constraining them too aggressively hurts substantially.
+
+**Number of trees (`ntree`)**. Varying `ntree` between 100 and 1000 changes almost nothing. Arabica moves within a narrow band of $R^2$ = 0.810 to 0.814, and Robusta within 0.683 to 0.698, with no clear monotonic direction in either case. This is the expected behaviour for a Random Forest: each tree is grown independently on a bootstrap sample, and averaging over more trees mainly reduces the variance of the ensemble's prediction rather than changing what it has learned. Once enough trees are grown to average out the noise from individual bootstrap samples, roughly 100 in this case, adding more brings diminishing and eventually negligible returns. The baseline choice of 500 trees is comfortably within this plateau for both varieties.
+
+**Minimum terminal node size (`nodesize`)**. This is where the two varieties start to diverge, though the direction is the same for both. Smaller values, which allow trees to split further and grow deeper, improve performance: `nodesize = 1` reaches $R^2$ = 0.826 for Arabica and 0.717 for Robusta, both above their respective baselines (0.811 and 0.695). Larger values degrade performance steadily: at `nodesize = 20`, Arabica falls to 0.725 and Robusta falls further still, to 0.595, a full 10 points below its baseline. Robusta is consistently more sensitive to this constraint than Arabica across every value tested, which fits the pattern already established elsewhere in this study: Robusta's shorter, more volatile training sample benefits less from an artificially simplified tree structure, since restricting node size caps the model's ability to capture the finer-grained relationships this variety's price dynamics 
+
+**Maximum number of terminal nodes (`maxnodes`)**. The same qualitative pattern appears, and here it is far more dramatic at the aggressive end. Capping trees at only 10 terminal nodes is clearly too restrictive: $R^2$ falls to 0.695 for Arabica and to 0.577 for Robusta, the single worst result in the entire comparison and nearly 12 points below the Robusta baseline. Relaxing the cap to 50 or 100 nodes brings both varieties back to within a hair of the baseline (0.807-0.809 for Arabica, 0.69-0.695 for Robusta), suggesting that the unconstrained baseline was already close to the complexity these trees actually need, and that only a severe artificial ceiling meaningfully hurts performance.
+
+**Taken together**, these three sweeps point to the same conclusion from three different angles: the Random Forest's baseline configuration, 500 trees with no explicit complexity constraint, was already close to optimal, or at least safely on the right side of the complexity/performance trade-off. The only genuine improvements found, `nodesize = 1` for both varieties, are modest (roughly +0.015 for Arabica, +0.022 for Robusta) and come at the cost of growing near-maximal trees, which increases the risk of overfitting individual bootstrap samples even if the walk-forward test performance does not yet show it. The clearest and most robust finding across the whole table is the negative one: constraining tree complexity too aggressively, whether through a small `maxnodes` or a large `nodesize`, is reliably harmful, and more so for Robusta than for Arabica.
+
 ## XGBoost
 
 The baseline XGBoost model used fixed hyperparameters that were chosen manually, which is a reasonable starting point but not the most rigorous approach. This section does things more carefully by testing a large number of hyperparameter combinations and picking the one that works best. The twist compared to a standard grid search is that each combination is evaluated on three different portions of the training data rather than just one. This way, the winning combination has to perform consistently across the full training period, not just get lucky on one particular window. The grid used for Arabica is finer and centred around values that performed well in preliminary experiments, while the grid for Robusta is broader since no strong prior exists on the optimal range for that series.
