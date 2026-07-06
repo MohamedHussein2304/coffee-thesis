@@ -30,7 +30,7 @@ packages_requis <- c(
   "ggplot2", "corrplot", "tseries", "urca", "forecast",
   "scales", "gridExtra", "knitr", "kableExtra", "moments",
   "ggrepel", "randomForest", "xgboost", "e1071", "nnet",
-  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS", "glmnet"
+  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS", "glmnet", "rpart"
 )
 for (pkg in packages_requis) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -4005,6 +4005,221 @@ Across all three levers, the results tell a consistent story: the number of tree
 **Maximum number of terminal nodes (`maxnodes`)**. The same qualitative pattern appears, and here it is far more dramatic at the aggressive end. Capping trees at only 10 terminal nodes is clearly too restrictive: $R^2$ falls to 0.695 for Arabica and to 0.577 for Robusta, the single worst result in the entire comparison and nearly 12 points below the Robusta baseline. Relaxing the cap to 50 or 100 nodes brings both varieties back to within a hair of the baseline (0.807-0.809 for Arabica, 0.69-0.695 for Robusta), suggesting that the unconstrained baseline was already close to the complexity these trees actually need, and that only a severe artificial ceiling meaningfully hurts performance.
 
 **Taken together**, these three sweeps point to the same conclusion from three different angles: the Random Forest's baseline configuration, 500 trees with no explicit complexity constraint, was already close to optimal, or at least safely on the right side of the complexity/performance trade-off. The only genuine improvements found, `nodesize = 1` for both varieties, are modest (roughly +0.015 for Arabica, +0.022 for Robusta) and come at the cost of growing near-maximal trees, which increases the risk of overfitting individual bootstrap samples even if the walk-forward test performance does not yet show it. The clearest and most robust finding across the whole table is the negative one: constraining tree complexity too aggressively, whether through a small `maxnodes` or a large `nodesize`, is reliably harmful, and more so for Robusta than for Arabica.
+
+### Random Forest: Single-Tree Pruning with CART
+
+The tuning above covered `ntree`, `nodesize` and `maxnodes`, but not `cp`, and there is a good reason for that: `cp` is not actually a Random Forest parameter. It belongs to CART, the algorithm behind a single decision tree, which grows the tree deliberately too large and then prunes it back afterwards. That is a fundamentally different idea from a forest of hundreds of trees, each grown independently and left unpruned, where the averaging across trees does the work that pruning would otherwise do for a single tree. Rather than leave this as an abstract distinction, this section fits an actual CART tree with proper pruning, so the difference between the two approaches shows up in real numbers rather than just in the explanation. The cross-validation used to select the pruning level is entirely internal to each walk-forward training window: it never touches the observations held out for testing, so the out-of-sample comparison against the Random Forest below remains on equal footing. As with the cross-validation used to select the LASSO and Ridge penalties earlier in this analysis, `rpart`'s internal folds are built by random sampling rather than chronological order, so the pruning decision at each walk-forward step is informed by a mix of earlier and later observations within that window, not a strict past-to-future split. This stays contained within each training window and does not affect the integrity of the walk-forward test results themselves.
+
+*This chunk builds a single CART tree at each walk-forward step. The tree is first grown deliberately oversized, then pruned back using the cost-complexity table `rpart` produces internally, choosing the pruning level with the one-standard-error rule: the smallest tree whose cross-validated error stays within one standard error of the best one found.*
+
+```{r cart_pruning_setup, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# CART WITH COST-COMPLEXITY PRUNING — rpart
+# randomForest has no cp argument. cp governs the pruning of a
+# single tree grown by CART, which has no real equivalent for an
+# ensemble of independently bootstrapped, unpruned trees. This
+# chunk fits a single CART tree via rpart, using its built-in
+# cost-complexity pruning, to show directly what cp does and how
+# it differs from the nodesize/maxnodes controls tested above.
+# ----------------------------------------------------------
+
+library(rpart)
+
+
+# ----------------------------------------------------------
+# WALK-FORWARD ESTIMATION FUNCTION — PRUNED CART
+#
+# Arguments:
+#   df      : levels dataset (one row per month)
+#   var_dep : name of the dependent variable column
+#             ("arabica_price" or "robusta_price")
+#   n_train : size of the initial training window (number of rows),
+#             computed earlier in the preprocessing chunk
+#
+# What the function returns:
+#   actual    : the observed (scaled) prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+#   final_fit : the full unpruned tree and its cptable from the
+#               LAST walk-forward step (largest training window),
+#               kept so the cost-complexity table can be shown
+#               afterwards
+# ----------------------------------------------------------
+
+fit_cart_pruned <- function(df, var_dep, n_train) {
+
+  # STEP 1 — Restrict the dataset to the columns this model needs,
+  # identical to fit_rf() above.
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
+
+  # STEP 2 — Min-Max scale every column to [0, 1], matching the
+  # Random Forest baseline so MSE/MAE stay on a comparable scale.
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  # STEP 3 — Split into the initial training set and the test set.
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  # STEP 4 — Walk-forward loop. At each step, a tree is grown with
+  # a permissive cp floor (0.0001) so it is deliberately oversized,
+  # using rpart's default 10-fold internal cross-validation (xval)
+  # to build the cost-complexity table. The one-standard-error rule
+  # is then applied by hand: find the smallest tree whose
+  # cross-validated error is within one standard error of the
+  # lowest error found in the table.
+  predictions <- numeric(n_test)
+  formule     <- as.formula(paste(var_dep, "~ ."))
+
+  arbre_final <- NULL   # kept from the last iteration for reporting
+
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues  <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    # Grow a deliberately oversized tree. minsplit = 10 keeps the
+    # tree from splitting nodes with fewer than 10 observations,
+    # a permissive floor consistent with rpart's own default.
+    arbre_complet <- rpart(formule, data = fenetre_entrainement,
+                           method  = "anova",
+                           control = rpart.control(cp = 0.0001,
+                                                   minsplit = 10,
+                                                   xval = 10))
+
+    # One-standard-error rule: find the row of the smallest tree
+    # whose cross-validated error (xerror) is within the minimum
+    # xerror plus its standard error (xstd). rpart's cptable is
+    # ordered from smallest tree (row 1) to largest (last row), so
+    # the smallest eligible row index is the simplest qualifying
+    # tree.
+    table_cp    <- arbre_complet$cptable
+    ligne_min   <- which.min(table_cp[, "xerror"])
+    seuil_1se   <- table_cp[ligne_min, "xerror"] + table_cp[ligne_min, "xstd"]
+    lignes_ok   <- which(table_cp[, "xerror"] <= seuil_1se)
+    ligne_1se   <- min(lignes_ok)
+    cp_optimal  <- table_cp[ligne_1se, "CP"]
+
+    # Prune the oversized tree down to the cp selected above.
+    arbre_elague <- prune(arbre_complet, cp = cp_optimal)
+    arbre_final  <- list(complet = arbre_complet, elague = arbre_elague,
+                        cp_optimal = cp_optimal)
+
+    # Predict the single next observation.
+    ligne_a_predire <- donnees_test[i, ]
+    predictions[i]  <- predict(arbre_elague, newdata = ligne_a_predire)
+  }
+
+  # STEP 5 — Return observed and predicted test values, plus the
+  # final iteration's full tree and cptable for the cost-complexity
+  # illustration below.
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions,
+       final_fit = arbre_final)
+}
+```
+
+*This chunk runs the pruned CART tree for both coffee varieties.*
+
+```{r cart_pruning_run, message=FALSE, warning=FALSE, results='hide'}
+
+# ----------------------------------------------------------
+# RUN PRUNED CART, BOTH SERIES
+# ----------------------------------------------------------
+
+res_cart_ara <- fit_cart_pruned(df_arabica_levels, "arabica_price", n_train_ara_lev)
+res_cart_rob <- fit_cart_pruned(df_robusta_levels, "robusta_price", n_train_rob_lev)
+```
+
+*This chunk puts the pruned single tree side by side with the Random Forest baseline from earlier in this section, grouped by variety the same way as every other comparison table in this analysis.*
+
+```{r cart_pruning_table, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# COMPILE COMPARISON TABLE — SINGLE PRUNED TREE VS RANDOM FOREST
+# ----------------------------------------------------------
+
+df_cart_comparison <- rbind(
+  rbind(
+    data.frame(Specification = "Random Forest (baseline)",
+               calculer_metriques(res_rf_ara$actual, res_rf_ara$predicted)),
+    data.frame(Specification = "Single pruned tree (CART, cp via 1-SE rule)",
+               calculer_metriques(res_cart_ara$actual, res_cart_ara$predicted))
+  ) %>% mutate(Series = "Arabica", .after = Specification),
+
+  rbind(
+    data.frame(Specification = "Random Forest (baseline)",
+               calculer_metriques(res_rf_rob$actual, res_rf_rob$predicted)),
+    data.frame(Specification = "Single pruned tree (CART, cp via 1-SE rule)",
+               calculer_metriques(res_cart_rob$actual, res_cart_rob$predicted))
+  ) %>% mutate(Series = "Robusta", .after = Specification)
+)
+
+df_cart_comparison %>%
+  select(Specification, R2, MSE, MAE) %>%
+  kable(caption   = "Random Forest vs a single pruned CART tree",
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Specification", "R²", "MSE", "MAE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = TRUE) %>%
+  row_spec(2, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 2,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 3, 4,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec")
+```
+
+*This chunk shows the actual cost-complexity table behind the pruning decision, for the last walk-forward step of each variety (the model trained on the largest window). Each row is a candidate tree size, with its cross-validated error and standard error; the row picked by the one-standard-error rule is highlighted, so the pruning choice is visible rather than just a number reported in the text.*
+
+```{r cart_pruning_complexity, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# COST-COMPLEXITY TABLE — FINAL ITERATION, BOTH VARIETIES
+# ----------------------------------------------------------
+
+afficher_cptable <- function(res_cart, couleur_header, caption_text) {
+
+  table_cp   <- as.data.frame(res_cart$final_fit$complet$cptable)
+  cp_choisi  <- res_cart$final_fit$cp_optimal
+
+  table_cp$Selected <- ifelse(abs(table_cp$CP - cp_choisi) < 1e-10,
+                              "<- 1-SE rule", "")
+
+  kable(table_cp,
+        caption   = caption_text,
+        booktabs  = TRUE, row.names = FALSE,
+        digits    = 5,
+        col.names = c("CP", "N splits", "Rel. error", "X-val error",
+                      "X-val std. error", "")) %>%
+    kable_styling(bootstrap_options = c("striped", "hover"),
+                  font_size = 11, full_width = TRUE) %>%
+    row_spec(which(table_cp$Selected != ""), bold = TRUE,
+             background = "#fff9e6") %>%
+    row_spec(0, bold = TRUE, background = couleur_header, color = "white")
+}
+
+afficher_cptable(res_cart_ara, "#8B4513",
+                 "Cost-complexity table — Arabica (final walk-forward iteration)")
+
+afficher_cptable(res_cart_rob, "#2E8B57",
+                 "Cost-complexity table — Robusta (final walk-forward iteration)")
+```
+
+The comparison leaves little room for ambiguity. A single pruned CART tree falls well short of the Random Forest for both varieties: $R^2$ drops from 0.811 to 0.672 for Arabica, a loss of 0.139, and from 0.695 to 0.395 for Robusta, a loss of exactly 0.300. Robusta is hit noticeably harder, consistent with the pattern already seen throughout this study, where its shorter and more volatile sample tends to punish any simplification of the model more severely than Arabica does.
+
+This gap is exactly what the difference between CART and Random Forest predicts. A single tree, however carefully pruned, has to commit to one specific sequence of splits chosen from one training sample. The Random Forest instead averages over hundreds of trees, each grown on its own bootstrap sample and each considering only a random subset of predictors at every split. Individually, many of these trees are cruder or noisier than a single well-pruned CART tree would be, but averaging across them cancels out a good part of that noise, in a way that no amount of pruning can replicate within a single tree. The one-standard-error rule applied here is, if anything, a fairly disciplined pruning choice, and it still cannot close this gap.
+
+The cost-complexity tables make the pruning decision itself visible rather than just asserted. For Arabica, the cross-validated error drops sharply over the first few splits, from 1.010 with no splits at all to 0.307 at 5 splits, then keeps improving more slowly before the one-standard-error rule settles on 13 splits (cp = 0.00604, cross-validated error 0.201), rather than the lower-error, larger trees available further down the table. For Robusta, the same logic applies with a smaller tree: the rule selects 9 splits (cp = 0.01817, cross-validated error 0.333), even though slightly larger trees a few rows down achieve marginally lower cross-validated error. In both cases, the rule is doing exactly what it is designed to do: trading a small, statistically insignificant amount of cross-validated accuracy for a simpler, more conservative tree, rather than chasing the single lowest error value in the table.
+
+Taken together, this section answers the `cp` question directly rather than leaving it as an unused parameter. `cp` governs a real and useful mechanism, but one that belongs to a single tree deliberately grown large and pruned back through cross-validation. A Random Forest does not need it, and this comparison shows why: even a properly pruned single tree, chosen through the same disciplined one-standard-error logic used throughout classical CART, still forecasts noticeably worse than an ensemble of unpruned trees for both coffee varieties.
 
 ## XGBoost
 
