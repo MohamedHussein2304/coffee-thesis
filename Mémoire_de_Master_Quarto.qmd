@@ -20,6 +20,8 @@ lang: en
 
 # Data
 
+This section documents the construction of the monthly dataset used throughout the analysis, from the raw source files through to the assembled dataset passed to the six forecasting models. Eight data sources are combined: futures prices, macroeconomic indicators, USDA supply-and-demand fundamentals, ERA5 climate reanalysis data, the ENSO index, and CFTC speculative positioning data. Each subsection below covers one data source, its transformation into a monthly series, and, where relevant, the reasoning behind specific processing choices.
+
 ## Setup
 
 *This chunk initialises the working environment for the entire pipeline. All raw input data file paths and global constants are defined here and referenced in every subsequent chunk. Output files produced later in the pipeline, including the climate indices and the final assembled datasets, are written to the shared `PATH_OUTPUT` directory defined here, although their individual filenames are set locally in the chunk that creates each file rather than centralised here. Constructing all paths relative to BASE_PATH means that relocating the data folder requires editing a single line.*
@@ -179,7 +181,7 @@ nom_mapping <- setNames(
 
 ## Overview of the Dataset
 
-This study draws on eight distinct data sources covering the period from January 2000 to December 2023, yielding 288 monthly observations for the main analysis. The choice of this starting point rests on three considerations. First, the International Coffee Organization suspended its export quota system in 1989, and its definitive abandonment over the following years produced a decade of institutional transition that reshaped the price formation environment prevailing over the analysis period (Lewin et al., 2004). Coffee price data from before 2000 therefore reflect a structurally different market environment, and including them would introduce regime-change breaks that complicate time series modelling. Second, the ERA5 reanalysis dataset used for the climate variables reaches its highest spatial and temporal reliability from 2000 onward, corresponding to the transition to the modern satellite era (Hersbach et al., 2020). Third, two variables used throughout the analysis remain only partially available within this window: the CFTC Disaggregated COT report starts in June 2006, and Robusta futures prices from Refinitiv start in January 2008. The analysis ends in December 2023, the last month for which all data sources were simultaneously available at the time of data collection.
+This study draws on eight distinct data sources covering January 2000 to December 2023, yielding 288 monthly observations for the main analysis. Three considerations shape this choice of starting point. The International Coffee Organization suspended its export quota system in 1989, and the institutional transition that followed over the next decade reshaped how coffee prices were formed throughout the period (*Lewin et al., 2004*). Data from before 2000 would therefore reflect a structurally different market, and including it would introduce regime-change breaks that complicate time series modelling rather than clarify it. The timing also lines up well with the climate data: the ERA5 reanalysis dataset used for the climate variables reaches its highest spatial and temporal reliability from 2000 onward, coinciding with the transition to the modern satellite era (*Hersbach et al., 2020*). A third, more practical constraint comes from two variables that simply aren't available earlier: the CFTC Disaggregated COT report only begins in June 2006, and Refinitiv's Robusta futures prices only start in January 2008. The analysis runs through December 2023, the last month for which every data source could be aligned at the time of collection.
 
 *This chunk produces the variable summary table presented in the text. Each row corresponds to one variable retained in the final dataset, grouped by category. The table is built manually as a data frame so that the ordering and grouping of rows can be controlled precisely, then rendered using `kableExtra` with row-merging on the Category column for readability.*
 
@@ -259,13 +261,13 @@ kable(table_vars,
   collapse_rows(columns = 1, valign = "middle")
 ```
 
-Two data availability constraints deserve explicit acknowledgement. First, Robusta futures prices from Refinitiv are available only from 2008 onward; the 96 months spanning 2000–2007 are therefore missing for this variable, and Robusta models are estimated on the 2008–2023 sub-period. Second, the CFTC Disaggregated COT report, which distinguishes Managed Money from commercial hedgers, was introduced in June 2006. The net speculative position variable accordingly contains missing values for the 77 months preceding June 2006, which is documented and handled in the modelling phase.
+Two data availability constraints are worth flagging explicitly here. Robusta futures prices from Refinitiv only go back to 2008, so the 96 months from 2000 to 2007 are missing for this variable, and Robusta models are accordingly estimated on the 2008–2023 sub-period. The CFTC Disaggregated COT report follows a similar pattern: it was not introduced until June 2006, since this is the report that separates Managed Money from commercial hedgers, so the net speculative position variable is missing for the 77 months preceding that date. Both gaps are addressed directly in the modelling phase.
 
 ## Dependent Variables: Coffee Futures Prices
 
-The two dependent variables are the monthly average closing prices of Arabica coffee futures traded on ICE Futures U.S. (contract symbol KC) and Robusta coffee futures traded on ICE Futures Europe, formerly the London International Financial Futures and Options Exchange (contract symbol RC). Both series are extracted from Refinitiv via the CEDIF data facility at the University of Lausanne, which constitutes the primary source for price data in this study. Arabica and Robusta are treated as two distinct dependent variables and modelled separately throughout the analysis, reflecting their different market structures, consumer bases and price determinants. A combined coffee price index is not constructed, as aggregation would obscure the variety-specific dynamics that this study aims to capture.
+The two dependent variables are the monthly average closing prices of Arabica coffee futures traded on ICE Futures U.S. (contract symbol KC) and Robusta coffee futures traded on ICE Futures Europe, formerly the London International Financial Futures and Options Exchange (contract symbol RC). Both series come from Refinitiv via the CEDIF data facility at the University of Lausanne, the primary source for price data throughout this study, which offers institutional-grade quality since prices reflect actual transaction records from the ICE exchanges rather than aggregated or estimated values from secondary sources.
 
-The use of Refinitiv as the primary source for futures price data ensures institutional-grade data quality, with prices reflecting actual transaction records from the ICE exchanges rather than aggregated or estimated values from secondary sources.
+Arabica and Robusta are treated as two distinct dependent variables and modelled separately throughout the analysis, reflecting their different market structures, consumer bases and price determinants. A combined coffee price index is not constructed, since aggregating the two would obscure the variety-specific dynamics this study sets out to capture.
 
 *This chunk reads the four Refinitiv price series, Arabica, Robusta, Cocoa and Sugar, from their raw Excel files and aggregates them from daily to monthly frequency. A single reusable function handles the parsing logic for all four files, which share the same Refinitiv export format. The chunk then builds the time series plots for the two dependent variables.*
 
@@ -379,7 +381,7 @@ p2 <- ggplot(filter(df_prix, !is.na(prix_robusta)),
 gridExtra::grid.arrange(p1, p2, ncol = 1)
 ```
 
-The Arabica price series covers the full 2000–2023 period and exhibits the characteristic volatility of agricultural commodity markets. The Robusta series, available from 2008, follows a broadly similar trajectory but at lower absolute price levels, reflecting its primary use in soluble coffee and blends.
+The Arabica price series covers the full 2000–2023 period and displays the volatility typical of agricultural commodity markets. Robusta, available from 2008 onward, shares the same broad phases of decline and recovery over the period they overlap, though the timing of individual peaks and troughs differs somewhat between the two.
 
 ## Market Spillover Variables
 
@@ -3174,6 +3176,8 @@ Read together with the performance results, this offers a partial answer to why 
 
 ## ARIMAX
 
+ARIMAX combines a standard linear regression on the 14 exogenous predictors with an ARMA structure applied to what that regression leaves unexplained. The idea is simple: prices don't just react to WTI, CPI, and the rest of the predictor set, they also carry their own momentum, so treating the residual as pure noise (the way MLR does) throws away information a time series model can actually use.
+
 *This chunk estimates the ARIMAX model for both coffee series using a walk-forward expanding window. At each step, `auto.arima()` selects the optimal $(p,d,q)$ order by minimising AIC over the current training window, then generates a one-step-ahead forecast using the next row of exogenous regressors. The model is therefore re-specified at every forecast origin, allowing the autoregressive structure to adapt as new observations are added to the training window. As with the MLR function above, the code is written as a sequence of explicit, separate steps.*
 
 ```{r arimax, message=FALSE, warning=FALSE}
@@ -3326,7 +3330,9 @@ metriques_arimax <- rbind(
 )
 ```
 
-The ARIMAX model delivers strong out-of-sample performance on both series. For Arabica, the model achieves an $R^2$ of 0.821, with an MSE of 0.029 and an MAE of 0.131 USD/lb, indicating that it captures the broad price dynamics well over the test period. For Robusta, performance is even higher, with an $R^2$ of 0.929, an MSE of 11,194 and an MAE of 88.7 USD/tonne, confirming that the autoregressive structure of the model, combined with the exogenous variables, explains the vast majority of price variation in the test window. The order $(p,d,q)$ selected by `auto.arima()` at each walk-forward step varied across iterations, reflecting the adaptive nature of the estimation procedure.
+ARIMAX turns out to be one of the strongest models tested in this study. It reaches an $R^2$ of 0.821 for Arabica and 0.929 for Robusta, meaning the model captures the vast majority of price movement over both test periods. Beyond the walk-forward loop that produces these out-of-sample forecasts, a separate ARIMAX model is estimated once on the initial training window only, and never updated thereafter. This second model plays no role in the reported performance metrics; it exists solely to provide a single, stable reference point, an order, a set of coefficients, and a set of residuals, that the sections below all refer back to, rather than trying to summarise 43 potentially different models estimated over the course of the walk-forward procedure.
+
+### Model Order and Estimation
 
 ```{r arimax_order}
 # Report the ARIMA order selected on the full training set
@@ -3337,12 +3343,15 @@ cat("\nRobusta - ARIMA order selected by auto.arima():\n")
 print(res_arimax_rob$model)
 ```
 
-On the full training set, `auto.arima()` selected a Regression with ARIMA(1,0,0) errors for Arabica and a Regression with ARIMA(3,0,1) errors for Robusta. The absence of differencing ($d=0$) in both cases reflects the fact that the trending co-movement between prices and the exogenous regressors is absorbed by the regression component, leaving residuals that are modelled as a stationary autoregressive process. The AR(1) coefficient of 0.967 for Arabica confirms the high degree of price persistence documented in the descriptive analysis. For Robusta, the more complex ARMA(3,1) error structure captures the additional short-run dynamics characteristic of this more volatile series.
+On the full training set, `auto.arima()` settles on a Regression with ARIMA(1,0,0) errors for Arabica and a Regression with ARIMA(3,0,1) errors for Robusta. Neither model differences the residuals $(d=0)$, which makes sense once you consider what the regression component is already doing: prices and the exogenous predictors trend together over the sample, so the regression absorbs that shared drift on its own, leaving behind a residual that doesn't need further differencing to behave. The AR(1) coefficient of 0.967 for Arabica is a striking number in its own right. It says the residual carries over from one month to the next almost entirely, which lines up with the strong persistence already visible in the descriptive statistics. Robusta's richer ARMA(3,1) structure suggests there is more short-run dynamics to capture in this series, consistent with it being the more volatile of the two.
 
-The tables below report the regression coefficients of the exogenous regressors from the final ARIMAX model estimated on the full training set for each coffee variety. These coefficients reflect the static linear relationship between each predictor and the dependent price series, conditional on the autoregressive error structure selected by `auto.arima()`. Two important caveats apply to their interpretation. First, the coefficients are estimated on the training set only and do not incorporate the walk-forward updating that drives the out-of-sample forecasts; they should therefore be read as descriptive of the average relationship over the training period rather than as stable structural parameters. Second, the presence of high multicollinearity among the predictors, documented in the correlation and PCA analyses, implies that individual coefficient estimates and their standard errors may be unstable, and that statistical insignificance of a given regressor does not preclude its contribution to forecast accuracy when combined with other variables.
+### Regression Coefficients
+
+The tables below report the coefficients of the exogenous regressors from the ARIMAX model estimated on the full training set for each variety. Two things are worth keeping in mind while reading them. First, these coefficients come from the single reference model, not the walk-forward loop, so they describe an average relationship over the training period rather than a set of stable structural parameters. Second, the same multicollinearity already documented in the correlation and PCA sections applies here too: a regressor showing up as statistically insignificant doesn't mean it contributes nothing to the forecasts, just that OLS-style estimation can't isolate its individual effect cleanly when it moves in lockstep with several other predictors.
+
+*This chunk computes the Variance Inflation Factor (VIF) for each of the 14 exogenous regressors included in the ARIMAX model, separately for Arabica and Robusta. VIF is computed on an equivalent OLS model estimated on the initial training window, which is the standard approach since the `vif()` function from the `car` package operates on `lm()` objects. The ARMA error structure of ARIMAX does not affect the collinearity structure of the regressors, so the VIF values are directly interpretable in the ARIMAX context.*
 
 ```{r arimax_coefficients, message=FALSE, warning=FALSE}
-
 # ----------------------------------------------------------
 # ARIMAX COEFFICIENT TABLES — ARABICA AND ROBUSTA
 # coef() and vcov() extract the regression coefficients and
@@ -3353,15 +3362,60 @@ The tables below report the regression coefficients of the exogenous regressors 
 # Only the exogenous regressor coefficients are displayed —
 # the ARMA error structure terms (ar1, ma1, etc.) are excluded
 # to focus on the interpretable predictors.
+# Header colour and significance colour-coding now match the
+# convention used elsewhere in the document (extraire_coefs_mlr,
+# calculer_vif): couleur_header sets the brown/green header per
+# variety, and the significance column is colour-coded so the
+# reader can spot significant predictors at a glance rather than
+# scanning p-values row by row.
 # ----------------------------------------------------------
 
-extraire_coefs_arimax <- function(model, caption_text) {
+# ----------------------------------------------------------
+# REUSABLE COEFFICIENT EXTRACTION AND FORMATTING FUNCTION
+#
+# Arguments:
+#   model          : the ARIMAX model object (res_arimax_ara$model
+#                    or res_arimax_rob$model), fitted once on the
+#                    full initial training window elsewhere in the
+#                    document — never re-fitted here
+#   couleur_header : hex colour for the table header row, brown
+#                    for Arabica ("#8B4513") or green for Robusta
+#                    ("#2E8B57"), matching every other table in
+#                    this document
+#   caption_text   : caption string passed to kable()
+# ----------------------------------------------------------
 
-  co    <- coef(model)
-  se    <- sqrt(diag(vcov(model)))
+extraire_coefs_arimax <- function(model, couleur_header, caption_text) {
+
+  # STEP 1 — Extract raw coefficients and their standard errors.
+  # coef() returns ALL estimated parameters, including the ARMA
+  # error-structure terms (ar1, ar2, ma1, etc.) alongside the 14
+  # exogenous regressor coefficients — these are filtered out in
+  # STEP 3 below. vcov() returns the full variance-covariance
+  # matrix; diag() extracts just the variances (the diagonal),
+  # and sqrt() converts each variance to a standard error.
+  co <- coef(model)
+  se <- sqrt(diag(vcov(model)))
+
+  # STEP 2 — Compute t-statistics and p-values by hand.
+  # forecast::Arima objects have no built-in tidy() method that
+  # separates ARMA terms from exogenous regressors the way
+  # broom::tidy() does for lm() objects, so this is done manually:
+  #   t-statistic = coefficient estimate divided by its std. error
+  #   p-value     = two-sided test against a standard normal
+  #                 distribution (pnorm), since these are
+  #                 maximum-likelihood estimates rather than
+  #                 OLS estimates with a t-distribution
   tstat <- co / se
   pval  <- 2 * pnorm(abs(tstat), lower.tail = FALSE)
 
+  # STEP 3 — Assemble the display data frame and keep only the
+  # exogenous regressors. grepl() with a regex matches any
+  # variable name starting with "ar", "ma", "intercept" or
+  # containing "drift" (case-insensitive), and filter(!...)
+  # removes those rows, leaving only the 14 predictor coefficients.
+  # The Sig column applies the conventional significance stars
+  # used throughout this document (***, **, *, ., or blank).
   df_coef <- data.frame(
     Variable  = names(co),
     Estimate  = round(co,    4),
@@ -3377,38 +3431,79 @@ extraire_coefs_arimax <- function(model, caption_text) {
     ),
     stringsAsFactors = FALSE
   ) %>%
-  # Keep only exogenous regressors — exclude ARMA terms
   filter(!grepl("^ar|^ma|^intercept|drift", Variable,
                 ignore.case = TRUE))
 
+  # STEP 4 — Build a colour vector for the significance column.
+  # Computed once here, outside kable(), so it can be reused for
+  # both the text colour of the Sig column (STEP 5) and the row
+  # background shading, keeping the two visual cues consistent
+  # with each other: green for conventional significance
+  # (p < 0.05), orange for the weaker 0.05-0.1 band, grey for
+  # everything else.
+  sig_colors <- case_when(
+    df_coef$P_value < 0.05 ~ "#27ae60",
+    df_coef$P_value < 0.1  ~ "#d35400",
+    TRUE                   ~ "grey50"
+  )
+
+  # STEP 5 — Render the table with kableExtra.
+  # column_spec(6, ...) colours and bolds the Sig column using the
+  # sig_colors vector built in STEP 4. row_spec() with which()
+  # lightly shades every row where P_value < 0.05, so significant
+  # predictors are visible at a glance without reading each
+  # p-value individually. row_spec(0, ...) colours the header row
+  # using couleur_header, the brown/green convention passed in as
+  # an argument so this single function serves both varieties.
   kable(df_coef,
         caption   = caption_text,
         booktabs  = TRUE,
         row.names = FALSE,
         col.names = c("Variable", "Estimate", "Std. Error",
-                      "t-stat", "p-value", "")) %>%
+                      "t-stat", "p-value", "Sig.")) %>%
     kable_styling(bootstrap_options = c("striped", "hover"),
-                  font_size = 11, full_width = TRUE)
+                  font_size = 11, full_width = TRUE) %>%
+    column_spec(6, bold = TRUE, color = sig_colors) %>%
+    row_spec(which(df_coef$P_value < 0.05), background = "#f7fbf8") %>%
+    row_spec(0, bold = TRUE, background = couleur_header, color = "white")
 }
+
+
+# ----------------------------------------------------------
+# ARABICA ARIMAX COEFFICIENTS
+# Calls the function above with the Arabica reference model
+# and the brown header colour used throughout the document.
+# ----------------------------------------------------------
 
 extraire_coefs_arimax(
   res_arimax_ara$model,
-  "ARIMAX regression coefficients — Arabica (full training set)"
+  couleur_header = "#8B4513",
+  caption_text   = "ARIMAX regression coefficients — Arabica (full training set)"
 )
+
+
+# ----------------------------------------------------------
+# ROBUSTA ARIMAX COEFFICIENTS
+# Calls the function above with the Robusta reference model
+# and the green header colour used throughout the document.
+# ----------------------------------------------------------
 
 extraire_coefs_arimax(
   res_arimax_rob$model,
-  "ARIMAX regression coefficients — Robusta (full training set)"
+  couleur_header = "#2E8B57",
+  caption_text   = "ARIMAX regression coefficients — Robusta (full training set)"
 )
 ```
 
-The coefficient tables confirm and sharpen the picture that emerged from the variable importance analysis. For Arabica, only two regressors reach conventional significance thresholds on the full training set: Sugar No.11 prices ($p < 0.001$) and WTI crude oil ($p < 0.01$). The Sugar coefficient of 1.022 implies that a one-unit increase in the Sugar No.11 price is associated with an increase of approximately USD 1.02/lb in the Arabica futures price. The positive WTI coefficient is consistent with the energy cost channel. The remaining regressors, including the USDA fundamentals, climate indices and the COT net position, are individually insignificant in the static regression, despite contributing meaningfully to out-of-sample forecasting accuracy in the machine learning models. This apparent contradiction may reflect the high multicollinearity among predictors documented in the correlation and PCA analyses: individually insignificant regressors can collectively carry predictive information that the ensemble methods exploit through non-linear combinations.
+For Arabica, only two regressors clear conventional significance thresholds: Sugar No.11 $(p<0.001)$ and WTI $(p<0.01)$. The Sugar coefficient of 1.022 means a one-unit rise in the Sugar No.11 price comes with roughly a USD 1.02/lb increase in Arabica futures, and the positive WTI coefficient fits the energy cost story already discussed elsewhere in this document. Everything else, including the USDA fundamentals, the climate indices and the COT position, is individually insignificant here even though several of these variables contribute meaningfully to the machine learning models' forecasts. That apparent contradiction is exactly what severe multicollinearity produces: a group of correlated predictors can carry real, usable information collectively while none of them stands out individually in a linear regression.
 
-For Robusta, CPI ($p < 0.01$) and WTI ($p < 0.05$) are significant, confirming the dominant role of macroeconomic conditions in this market. The COT net Managed Money position is highly significant ($p < 0.001$) with a positive coefficient of 0.003, indicating that each additional net long contract held by speculative funds is associated with a USD 0.003/tonne increase in the Robusta futures price, a small per-contract effect that becomes economically meaningful at the scale of tens of thousands of contracts documented in the descriptive analysis. The USDA fundamentals remain individually insignificant for Robusta as well, for the same multicollinearity reasons as Arabica.
+Robusta tells a similar story with a different cast of significant variables. CPI $(p<0.01)$ and WTI $(p<0.05)$ come through as significant, underlining how much macroeconomic conditions matter for this series. COT net Managed Money is highly significant too $(p<0.001)$, with a coefficient of 0.003, small on a per-contract basis but economically meaningful once you scale it up to the tens of thousands of contracts these funds typically hold. As with Arabica, the USDA fundamentals stay insignificant, for the same collinearity reasons.
 
-Before interpreting these coefficients, it is worth asking whether the model can even identify individual effects reliably given the degree of correlation among the predictors.
+### Multicollinearity Diagnostics
 
-*This chunk computes the Variance Inflation Factor (VIF) for each of the 14 exogenous regressors included in the ARIMAX model, separately for Arabica and Robusta. VIF is computed on an equivalent OLS model estimated on the initial training window, which is the standard approach since the `vif()` function from the `car` package operates on `lm()` objects. The ARMA error structure of ARIMAX does not affect the collinearity structure of the regressors, so the VIF values are directly interpretable in the ARIMAX context. Variables with a VIF above 10 are highlighted in red and classified as severe; variables between 5 and 10 are highlighted in orange and classified as moderate. This diagnostic provides a formal quantification of the multicollinearity already suggested by the correlation matrix and PCA analyses, and offers a structural explanation for the low number of individually significant coefficients observed in the tables above.*
+Before taking those coefficients at face value, it's worth asking how much the model can actually tell individual predictors apart given how correlated they are with each other.
+
+*This chunk computes the Variance Inflation Factor (VIF) for each of the 14 exogenous regressors included in the ARIMAX model, separately for Arabica and Robusta.*
 
 ```{r arimax_vif, message=FALSE, warning=FALSE}
 
@@ -3578,13 +3673,15 @@ calculer_vif(
 )
 ```
 
-The VIF results put a number on something the correlation matrix and PCA had already made visible. Exports, Production and Consumption are the three most problematic variables, with VIF values ranging from 21 to 49 depending on the variety. This is hardly surprising: all three series follow the same upward trajectory over the analysis period, driven by the steady growth in global coffee demand. Separating their individual effects is simply not something OLS can do reliably when they move in near-lockstep. CPI tells the same story, with a VIF above 27 in both cases, because it shares a common upward trend with almost every other nominal variable in the dataset. DXY also crosses the severity threshold, likely because of its prolonged co-movement with CPI over the post-2008 monetary policy cycle.
+The VIF table puts a number on something the correlation matrix and PCA had already hinted at. Exports, Production and Consumption are the worst offenders, with VIF values between 21 and 49 depending on the variety, which isn't surprising since all three trend upward together as global coffee demand grows over the period. CPI is in the same boat, with a VIF above 27 in both cases, because it shares that same broad upward trend with nearly every other nominal variable in the dataset. DXY crosses the severity threshold too, likely from its extended co-movement with CPI through the post-2008 monetary policy cycle.
 
-On the other side of the table, the picture is more reassuring. COT net MM, the climate indices, Ending stocks and the Fed Funds Rate all come in well below 5. These happen to be precisely the variables where the ARIMAX coefficient signs are most economically coherent, and where individual significance, when it appears, can actually be trusted.
+The variables on the safer end of the table tell a more encouraging story. COT net MM, the climate indices, Ending stocks and the Fed Funds Rate all sit comfortably below 5, and these happen to be exactly the variables whose ARIMAX coefficients came out with economically sensible signs and, where significant, results that can actually be trusted. The bigger picture here is that low t-statistics for Production, Consumption and Exports don't mean supply fundamentals don't matter to coffee prices. They mean OLS can't tell apart three series that move almost identically over time, no matter how much data you throw at it. The information is real, it just can't be attributed to one variable over another within a linear framework.
 
-The main takeaway is straightforward. The low t-statistics for Production, Consumption and Exports in the coefficient tables above do not mean that supply fundamentals are irrelevant to coffee prices. They simply mean that OLS cannot disentangle three nearly identical trending series, no matter how large the sample is. The variables are genuinely informative, they just cannot be told apart individually.
+### Residual Diagnostics
 
-The ACF and PACF plots below provide a formal visual diagnostic of the ARIMAX residuals for both series. Under correct model specification, the residuals should exhibit no systematic autocorrelation at any lag, that is, all spikes in both plots should fall within the blue dashed confidence bands ($\pm 1.96 / \sqrt{T}$). Significant spikes would indicate that the selected ARIMA error structure has failed to fully capture the temporal dynamics of the series, and that a higher-order specification might be warranted. The diagnostic is applied to the final model estimated on the full training set, which provides the largest available sample for assessing residual behaviour.
+Under a correctly specified ARIMAX model, the residuals remaining after accounting for both the regression and the ARMA structure should approximate white noise, exhibiting no systematic pattern left uncaptured.
+
+*This chunk provides a formal visual diagnostic of the ARIMAX residuals for both series via ACF and PACF plots. Under correct model specification, the residuals should exhibit no systematic autocorrelation at any lag, that is, all spikes in both plots should fall within the blue dashed confidence bands ($\pm 1.96 / \sqrt{T}$).*
 
 ```{r arimax_residuals_diagnostics, message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
 
@@ -3619,9 +3716,74 @@ pacf(residuals(res_arimax_rob$model),
 par(mfrow = c(1, 1))
 ```
 
-The residual diagnostics reveal an asymmetry between the two series. For Robusta, the ACF shows minor exceedances at lags 1 and 15, and the PACF shows a spike at lag 15. These isolated exceedances do not suggest a systematic pattern, and the ARIMA(3,0,1) error structure has absorbed the main short-run autocorrelation of the series.
+The two series don't behave the same way here. Robusta is close to clean, with only minor exceedances at lags 1 and 15 in the ACF and a single spike at lag 15 in the PACF, nothing that points to a systematic pattern the ARIMA(3,0,1) structure missed.
 
-For Arabica, the picture is less satisfactory. The ACF shows significant spikes at lags 1, 2, 5, 6, 16 and 24, and the PACF shows exceedances at lags 1, 5, 8 and 10. This indicates that the ARIMA(1,0,0) structure does not fully capture the autocorrelation dynamics of the Arabica residuals, and that a higher-order specification, for instance incorporating additional AR terms at lags 5 or 6, could reduce this residual dependence. This limitation is acknowledged as a direction for future refinement, though it does not invalidate the out-of-sample forecasting results given the $R^2$ of 0.821 achieved under walk-forward validation.
+Arabica is a different story. The ACF shows significant spikes at lags 1, 2, 5, 6, 16 and 24, and the PACF at lags 1, 5, 8 and 10, which means the ARIMA(1,0,0) structure isn't fully capturing this series' autocorrelation. A higher-order specification, adding AR terms around lags 5 or 6, would probably reduce this residual dependence, but the walk-forward loop's computational budget capped the search at $p=3$. This is acknowledged as a direction for future refinement rather than something that undermines the out-of-sample result: Arabica still reaches an $R^2$ of 0.821 under walk-forward validation despite this imperfection.
+
+*This chunk formally tests the stationarity of the ARIMAX residuals using the same ADF/KPSS procedure applied to the raw series in the Stationarity Tests section, reusing `tester_serie()` directly. This complements the ACF/PACF diagnostics above: autocorrelation and stationarity are related but distinct properties, and confirming both gives a fuller picture of whether the $d=0$ specification is well supported.*
+
+```{r arimax_residuals_stationarity, warning = FALSE}
+# ----------------------------------------------------------
+# STATIONARITY OF ARIMAX RESIDUALS — ARABICA AND ROBUSTA
+# The d=0 specification selected by auto.arima() for both series
+# implies that the regression component absorbs the trending
+# co-movement between prices and the exogenous regressors, leaving
+# residuals that do not require differencing. This chunk tests that
+# claim directly, applying the same ADF/KPSS procedure used on the
+# raw series earlier in the document to the residuals of the
+# reference ARIMAX model instead.
+# ----------------------------------------------------------
+
+# STEP 1 — Extract residuals from the two reference ARIMAX models
+# (fitted once on the full initial training window elsewhere in
+# the document, never re-fitted here).
+residus_ara <- residuals(res_arimax_ara$model)
+residus_rob <- residuals(res_arimax_rob$model)
+
+# STEP 2 — Run the same ADF/KPSS testing function already defined
+# in the main Stationarity Tests chunk, applied here to the
+# residuals rather than the raw price series.
+resultats_residus <- rbind(
+  cbind(Variable = "ARIMAX residuals (Arabica)", tester_serie(residus_ara)),
+  cbind(Variable = "ARIMAX residuals (Robusta)", tester_serie(residus_rob))
+)
+
+# STEP 3 — Render the table. Since both varieties sit in the same
+# table (one row each) rather than two separate tables, row_spec()
+# is used to apply a light variety-specific background tint per
+# row instead of pack_rows(), which is designed for grouping
+# multiple rows rather than colouring a single one. The ADF and
+# KPSS result columns keep their existing green/red text colour
+# coding, now bolded for better legibility against the tinted rows.
+kable(resultats_residus,
+      caption   = "ADF and KPSS stationarity tests — ARIMAX residuals (reference model)",
+      booktabs  = TRUE,
+      row.names = FALSE,
+      col.names = c("Variable", "ADF stat", "ADF p-val", "ADF result",
+                    "KPSS stat", "KPSS p-val", "KPSS result")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 10, full_width = TRUE) %>%
+  # Bold the Variable column so each row's variety is easy to spot
+  column_spec(1, bold = TRUE) %>%
+  # Bold and colour-code the ADF and KPSS result columns
+  column_spec(4, bold = TRUE,
+              color = ifelse(resultats_residus$ADF_result == "Stationary",
+                             "darkgreen", "#c0392b")) %>%
+  column_spec(7, bold = TRUE,
+              color = ifelse(resultats_residus$KPSS_result == "Stationary",
+                             "darkgreen", "#c0392b")) %>%
+  # Light variety-specific row tinting, consistent with the
+  # brown/green convention used throughout the document
+  row_spec(1, background = "#f5ece6") %>%
+  row_spec(2, background = "#e8f5ec") %>%
+  # Bold, dark header row (neutral colour since the table spans
+  # both varieties rather than being variety-specific)
+  row_spec(0, bold = TRUE, background = "#4a4a4a", color = "white")
+```
+
+The results mostly back up the $d=0$ specification, though not with the same confidence for both varieties. Robusta is unambiguous: the ADF rejects the unit root ($p = 0.010$) and the KPSS doesn't reject stationarity, confirming the ARIMA(3,0,1) structure is operating on a genuinely stationary residual, which fits the clean ACF/PACF result above.
+
+Arabica sits closer to the edge. The KPSS doesn't reject stationarity, but the ADF result lands right at the conventional 5% threshold ($p = 0.054$), and `R`'s own warning flags that the true p-value is smaller than what's printed, so this is a genuinely borderline case rather than a clean pass or fail. It's the same kind of ambiguity already seen for several raw series in the main stationarity analysis. Put together with the residual autocorrelation already noted above, the picture for Arabica is consistent: the $d=0$ specification is reasonable and the residuals are close to stationary, but the model isn't perfectly specified for this series, a limitation already on the table rather than a new concern.
 
 ## Random Forest
 
@@ -4183,31 +4345,63 @@ df_cart_comparison %>%
 
 # ----------------------------------------------------------
 # COST-COMPLEXITY TABLE — FINAL ITERATION, BOTH VARIETIES
+# Shows the cptable produced by rpart on the largest training window
+# for each series, with the row selected by the 1-SE rule flagged
+# explicitly, so the pruning decision is visible rather than just a
+# number reported in the text. This is a single representative
+# iteration (the last walk-forward step, on the largest training
+# window), not a summary across all ~40 walk-forward steps — the
+# same convention already used for the ARIMAX order and coefficient
+# tables earlier in the document.
 # ----------------------------------------------------------
 
 afficher_cptable <- function(res_cart, couleur_header, caption_text) {
 
+  # STEP 1 — Pull the raw cptable from the tree fitted at the final
+  # walk-forward step (stored in final_fit by fit_cart_pruned()),
+  # along with the cp value the 1-SE rule selected for that step.
   table_cp   <- as.data.frame(res_cart$final_fit$complet$cptable)
   cp_choisi  <- res_cart$final_fit$cp_optimal
 
+  # STEP 2 — Flag the row matching the selected cp. A small numeric
+  # tolerance (1e-10) is used instead of exact equality, since
+  # floating-point values rarely match to the last decimal.
   table_cp$Selected <- ifelse(abs(table_cp$CP - cp_choisi) < 1e-10,
                               "<- 1-SE rule", "")
 
+  # STEP 3 — Render with descriptive column names rather than
+  # rpart's internal abbreviations (CP, xerror, xstd), consistent
+  # with how variable names are relabelled for display elsewhere in
+  # this document (labels_mlr, labels_corr, etc.).
   kable(table_cp,
         caption   = caption_text,
         booktabs  = TRUE, row.names = FALSE,
         digits    = 5,
-        col.names = c("CP", "N splits", "Rel. error", "X-val error",
-                      "X-val std. error", "")) %>%
+        col.names = c("Complexity Parameter (cp)", "Number of Splits",
+                      "Training Error (rel. to root)",
+                      "Cross-Validated Error", "Cross-Validated Std. Error",
+                      "")) %>%
     kable_styling(bootstrap_options = c("striped", "hover"),
                   font_size = 11, full_width = TRUE) %>%
+    # Highlight the row selected by the 1-SE rule so the pruning
+    # decision is visually distinct from the rest of the table.
     row_spec(which(table_cp$Selected != ""), bold = TRUE,
              background = "#fff9e6") %>%
     row_spec(0, bold = TRUE, background = couleur_header, color = "white")
 }
 
+
+# ----------------------------------------------------------
+# ARABICA COST-COMPLEXITY TABLE
+# ----------------------------------------------------------
+
 afficher_cptable(res_cart_ara, "#8B4513",
                  "Cost-complexity table — Arabica (final walk-forward iteration)")
+
+
+# ----------------------------------------------------------
+# ROBUSTA COST-COMPLEXITY TABLE
+# ----------------------------------------------------------
 
 afficher_cptable(res_cart_rob, "#2E8B57",
                  "Cost-complexity table — Robusta (final walk-forward iteration)")
@@ -6827,6 +7021,12 @@ These limitations point to several directions for future work. Cointegration-bas
 
 From a practical standpoint, the results suggest that market participants seeking short-run price signals for coffee would benefit most from monitoring speculative positioning in the futures market and energy prices rather than focusing on supply fundamentals or climate conditions at monthly frequency. The variety-specific results further suggest that Robusta-focused analysts should track supply conditions in Vietnam and Indonesia specifically, as global aggregates dilute the variety-relevant signal. The consistent performance of multiple model families across both series and multiple specifications strengthens the reliability of these conclusions and suggests that the predictor set constructed in this study captures genuine and robust information about the drivers of coffee futures prices.
 
+# References
+
+Hersbach, H., Bell, B., Berrisford, P., Hirahara, S., Horányi, A., Muñoz-Sabater, J., Nicolas, J., Peubey, C., Radu, R., Schepers, D., Simmons, A., Soci, C., Abdalla, S., Abellan, X., Balsamo, G., Bechtold, P., Biavati, G., Bidlot, J., Bonavita, M., ... Thépaut, J.-N. (2020). The ERA5 global reanalysis. *Quarterly Journal of the Royal Meteorological Society*, *146*(730), 1999–2049. https://doi.org/10.1002/qj.3803
+
+Lewin, B., Giovannucci, D., & Varangis, P. (2004). *Coffee Markets: New Paradigms in Global Supply and Demand*. World Bank Agriculture and Rural Development Department. https://documents1.worldbank.org/curated/en/899311468167958765/pdf/283000REVISED0Coffee1Markets01PUBLIC1.pdf
+
 # Appendices
 
 ## Permutation Importance — Full Rankings
@@ -7107,7 +7307,6 @@ for (nom in names(modeles_rob)) {
                            "Predicted price (USD/tonne)"))
 }
 ```
-
 
 # Robustness Checks
 
