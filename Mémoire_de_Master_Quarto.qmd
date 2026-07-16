@@ -32,7 +32,7 @@ packages_requis <- c(
   "ggplot2", "corrplot", "tseries", "urca", "forecast",
   "scales", "gridExtra", "knitr", "kableExtra", "moments",
   "ggrepel", "randomForest", "xgboost", "e1071", "nnet",
-  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS", "glmnet", "rpart"
+  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS", "glmnet", "rpart", "reticulate"
 )
 for (pkg in packages_requis) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -385,13 +385,13 @@ The Arabica price series covers the full 2000–2023 period and displays the vol
 
 ## Market Spillover Variables
 
-Sugar and cocoa prices are included as potential spillover variables. Coffee, sugar and cocoa are all tropical agricultural commodities subject to similar climate shocks and traded on overlapping futures markets. Land substitution between coffee and sugar cultivation in Brazil, the world's largest producer of both, creates a supply-side linkage between the two markets. The Sugar No.11 contract (raw cane sugar, ICE Futures U.S.) and the ICE New York cocoa contract are used, both sourced from Refinitiv via CEDIF and aggregated to monthly frequency using the same procedure as the coffee price series.
+Sugar and cocoa prices are included as potential spillover variables. Coffee, sugar and cocoa are all tropical agricultural commodities exposed to similar climate shocks and traded on overlapping futures markets, and in Brazil specifically, the world's largest producer of both coffee and sugar, land substitution between the two crops creates a direct supply-side link. Sugar is captured via the Sugar No.11 contract (raw cane sugar, ICE Futures U.S.) and cocoa via the ICE New York contract, both sourced from Refinitiv via CEDIF and aggregated to monthly frequency using the same procedure as the coffee price series.
 
 ## Macroeconomic Variables
 
-Four macroeconomic variables are included to capture the broader financial and monetary environment that influences commodity prices. Three are sourced from the Federal Reserve Economic Data (FRED) database maintained by the Federal Reserve Bank of St. Louis; the fourth, the US Dollar Index, is sourced from Investing.com. All four are available at monthly frequency.
+Four macroeconomic variables are included to capture the broader financial and monetary environment that influences commodity prices. Three come from the Federal Reserve Economic Data (FRED) database maintained by the Federal Reserve Bank of St. Louis, while the fourth, the US Dollar Index, comes from Investing.com; all four are available at monthly frequency.
 
-The WTI crude oil price captures the energy cost dimension of coffee production and transportation, as well as the broad commodity price cycle that tends to co-move across raw materials. The US Dollar Index (DXY), sourced from Investing.com, measures the value of the US dollar against a basket of major currencies; since coffee futures are denominated in US dollars, a stronger dollar tends to depress prices for non-dollar buyers, reducing global demand. The Federal Funds Rate proxies the monetary policy stance of the Federal Reserve, which influences global capital flows, risk appetite and commodity price dynamics. The Consumer Price Index (CPI) captures the general US inflation environment, controlling for the broad upward drift in nominal commodity prices that accompanies overall price-level changes, independent of coffee-specific supply and demand conditions.
+The WTI crude oil price captures the energy cost dimension of coffee production and transportation, as well as the broader commodity price cycle that tends to move raw materials together. The US Dollar Index (DXY) measures the value of the dollar against a basket of major currencies, and since coffee futures are priced in dollars, a stronger dollar tends to depress prices for non-dollar buyers by reducing global demand. The Federal Funds Rate proxies the Federal Reserve's monetary policy stance, which shapes global capital flows, risk appetite and commodity price dynamics more broadly. The Consumer Price Index (CPI) captures the general US inflation environment, controlling for the upward drift in nominal commodity prices that comes with overall price-level changes rather than coffee-specific supply and demand conditions.
 
 *This chunk reads the four macroeconomic variables from their respective source files and produces a four-panel time series plot. Three series, CPI, WTI and the Federal Funds Rate, are downloaded from FRED and share an identical CSV structure, handled by a single reusable function. The Dollar Index (DXY) requires separate parsing because its Investing.com export uses a different date format and embeds numeric commas in price values.*
 
@@ -518,11 +518,11 @@ write.csv(fed, file.path(PATH_OUTPUT, "fed.csv"), row.names = FALSE)
 write.csv(dxy, file.path(PATH_OUTPUT, "dxy.csv"), row.names = FALSE)
 ```
 
-The four macroeconomic series exhibit markedly different dynamics over the analysis period. WTI crude oil displays the highest volatility of the four, including the 2008 spike above 130 USD per barrel followed by a sharp collapse, a renewed decline in 2014–2016, a deep trough in 2020 coinciding with the pandemic-driven collapse in oil demand, and a resurgence above 100 USD per barrel in 2022. The US Dollar Index follows a broad multi-year cycle, declining from a peak near 120 in the early 2000s to a low near 72 by 2008, before recovering through the 2010s and rising sharply from 2021 onward. The Federal Funds Rate traces the well-documented path of US monetary policy over the period, falling to near zero following the 2008 financial crisis, remaining near zero for an extended period, and rising sharply again from 2022 in response to elevated inflation. US CPI, by contrast, follows a smooth and persistent upward trend throughout the period, with a visible acceleration in its slope from 2021 onward.
+The four macroeconomic series trace markedly different paths over the analysis period. WTI crude oil is by far the most volatile of the four: it spikes above 130 USD per barrel in 2008 before collapsing sharply, declines again in 2014–2016, drops to a deep trough in 2020 as the pandemic collapsed oil demand, and climbs back above 100 USD per barrel in 2022. The US Dollar Index moves through a broader multi-year cycle instead, declining from a peak near 120 in the early 2000s to a low near 72 by 2008, recovering gradually through the 2010s, then rising sharply from 2021 onward. The Federal Funds Rate follows the well-documented arc of US monetary policy over the period: near zero after the 2008 financial crisis, staying there for an extended stretch, then climbing sharply again from 2022 as the Fed responded to elevated inflation. CPI stands apart from the other three, tracing a smooth and persistent upward trend throughout, with a visible acceleration in slope from 2021 onward.
 
 ## Market Fundamentals: USDA Production, Supply and Distribution
 
-Supply-and-demand fundamentals are sourced from the USDA Foreign Agricultural Service Production, Supply and Distribution (PSD) Online database, which publishes annual crop-year estimates for the United States and key producing and consuming countries across all major agricultural commodities. Four variables are retained: world coffee production, world domestic consumption, world exports and world ending stocks. These are aggregated to world totals by summing across all countries for each crop year.
+Supply-and-demand fundamentals are sourced from the USDA Foreign Agricultural Service Production, Supply and Distribution (PSD) Online database, which publishes annual crop-year estimates for the United States and key producing and consuming countries across all major agricultural commodities. Four variables are retained here: world coffee production, world domestic consumption, world exports and world ending stocks, each aggregated to a world total by summing across all countries for the corresponding crop year.
 
 *This chunk reads the USDA FAS PSD export file, aggregates country-level data to world totals for the four supply-and-demand variables, and expands the resulting annual series to monthly frequency by repeating each crop-year value across the twelve months of that year. The raw file uses an unusual structure, a single-column CSV embedded inside an Excel file, which requires a two-step parsing approach before standard tidyverse operations can be applied.*
 
@@ -656,15 +656,15 @@ gridExtra::grid.arrange(
 )
 ```
 
-This expansion procedure assumes that market participants incorporate annual supply-demand fundamentals into their pricing decisions throughout the crop year, rather than reacting only at the point of the annual USDA release. Since coffee supply-demand fundamentals are reported by the USDA only at crop-year frequency, the annual observation is carried forward to each month of the corresponding crop year. This approach enables the inclusion of supply-demand information while preserving the monthly structure of the dataset.
+This expansion procedure rests on the assumption that market participants incorporate annual supply-demand fundamentals into their pricing decisions gradually over the crop year, rather than reacting only at the point of the USDA's annual release. Since these fundamentals are only reported at crop-year frequency, carrying the same value forward to each month preserves the dataset's monthly structure while still allowing this information to enter the models.
 
 ## Climate Variables
 
 ### Selection of Producer Countries
 
-Climate conditions in coffee-producing regions directly affect supply through their impact on cherry development, flowering and yield. Temperature and precipitation are the two primary climatic determinants of coffee production at the agronomic level. Rather than using a single country or global average, this study constructs weighted climate indices that aggregate conditions across the 14 countries that account for the largest share of world coffee production.
+Climate conditions in coffee-producing regions directly affect supply through their impact on cherry development, flowering and yield, with temperature and precipitation standing out as the two primary determinants at the agronomic level. Rather than relying on a single country or a global average, this study constructs weighted climate indices that aggregate conditions across the 14 countries accounting for the largest share of world coffee production.
 
-The selection of these 14 countries follows a systematic, data-driven criterion: only countries whose average annual share of world coffee production exceeds 1% over the 2000–2024 period are included. This threshold is computed directly from the USDA FAS PSD data used for the supply fundamentals variables, ensuring full consistency between the production weights and the underlying data source. The table below reports the calculated production shares and confirms the selection criterion.
+These 14 countries are selected using a simple, data-driven rule: only those whose average annual share of world coffee production exceeds 1% over 2000–2024 are included. The threshold is computed directly from the USDA FAS PSD data already used for the supply fundamentals variables, which keeps the production weights fully consistent with their underlying data source. The table below reports the resulting production shares and confirms the selection.
 
 *This chunk derives the country selection criterion for the climate indices directly from the USDA PSD data already loaded in the previous chunk. For each crop year, each country's share of world production is computed, and the 25-year average of that share is then calculated across the full 2000–2024 period. Only countries whose average share meets or exceeds the 1% threshold are retained.*
 
@@ -729,7 +729,7 @@ kable(prod_by_country,
 
 *This chunk converts the raw production shares computed in the previous chunk into normalised weights that sum exactly to one. These weights are the core of the climate index construction: every weighted average in the subsequent climate chunks is computed using `POIDS_PRODUCTION`. Two parallel vectors map official country names as they appear in the USDA PSD database to the internal identifiers used in the file lists defined in the setup chunk, ensuring that the correct weight is always matched to the correct file.*
 
-```{r poids_production, echo=TRUE}
+```{r poids_production, echo=TRUE, results='hide'}
 
 # ----------------------------------------------------------
 # STEP 1 — DEFINE THE NAME MAPPING BETWEEN USDA AND FILES
@@ -788,9 +788,9 @@ POIDS_PRODUCTION <- PARTS_PRODUCTION / sum(PARTS_PRODUCTION)
 cat("Names of POIDS_PRODUCTION:", names(POIDS_PRODUCTION), "\n")
 ```
 
-The 14 selected countries collectively account for `r round(sum(prod_by_country$avg_share), 1)`% of world coffee production on average over 2000–2024. Countries falling below the 1% threshold have a negligible impact on global supply, and their inclusion would add noise without improving the explanatory power of the climate indices.
+The 14 selected countries collectively account for `r round(sum(prod_by_country$avg_share), 1)`% of world coffee production on average over 2000–2024. Countries below the 1% threshold contribute too little to global supply to matter here, and including them would only add noise without improving the explanatory power of the climate indices.
 
-Before constructing variety-specific production weights, the share of Arabica and Robusta production is computed for each of the 14 retained countries directly from the USDA FAS PSD data. The `Arabica Production` and `Robusta Production` attributes are available as separate line items in the raw dataset, allowing the variety split to be calculated empirically rather than assumed from external sources. This ensures full consistency with the data already used for the global production weights. The table below reports the calculated variety shares for each of the 14 countries over the 2000–2024 period.
+Before building variety-specific production weights, the Arabica and Robusta shares of each of the 14 retained countries are computed directly from the USDA FAS PSD data, using the separate `Arabica Production` and `Robusta Production` line items already present in the raw dataset. This keeps the variety split empirical rather than assumed, and fully consistent with the data already used for the global production weights. The table below reports the resulting variety shares for each country over 2000–2024.
 
 ```{r variety_splits, echo=TRUE}
 
@@ -857,9 +857,9 @@ kable(splits_variete %>%
                    background = c("white", "#f5ece6", "#e8f5ec"))
 ```
 
-The variety split table confirms the expected production geography of the two coffee varieties. Eight countries produce exclusively or quasi-exclusively Arabica — Colombia, Ethiopia, Honduras, Peru, Costa Rica, Guatemala, Nicaragua and Mexico all report Arabica shares above 90%, and are therefore assigned entirely to the Arabica group. Brazil, the world's largest producer, is the only major country with a significant mixed production, reporting 72.3% Arabica and 27.7% Robusta over the 2000–2024 period. On the Robusta side, Vietnam and Côte d'Ivoire are quasi-pure Robusta producers at 96.8% and 100% respectively, while Indonesia (87.7%), Uganda (80.9%) and India (67.8%) produce predominantly but not exclusively Robusta.
+The variety split table confirms the expected production geography of the two coffee varieties. Eight countries produce exclusively or near-exclusively Arabica, Colombia, Ethiopia, Honduras, Peru, Costa Rica, Guatemala, Nicaragua and Mexico all report Arabica shares above 90% and are assigned entirely to the Arabica group as a result. Brazil, the world's largest producer, stands out as the only major country with genuinely mixed production, splitting 72.3% Arabica and 27.7% Robusta over 2000–2024. On the Robusta side, Vietnam and Côte d'Ivoire come close to being pure Robusta producers at 96.8% and 100% respectively, while Indonesia (87.7%), Uganda (80.9%) and India (67.8%) lean heavily toward Robusta without being exclusive to it.
 
-Four countries contribute to both variety-specific indices: Brazil, India, Uganda and Indonesia. For these countries, the production weight assigned to each group is scaled by the empirically computed variety share rather than assumed from external sources. Countries with a variety share above 90% are treated as pure producers and assigned entirely to their dominant group, a simplification justified by the negligible contribution of the minority variety to their total output. This variety-aware weighting scheme ensures that the climate indices used in each model specification reflect conditions in the actual producing zones for that variety, rather than averaging over climatically relevant and irrelevant regions.
+Four countries feed into both variety-specific indices: Brazil, India, Uganda and Indonesia. For these, the production weight assigned to each group is scaled by the empirically computed variety share rather than assumed from external sources, while countries with a variety share above 90% are treated as pure producers and assigned entirely to their dominant group, a simplification justified by how little the minority variety contributes to their total output. This variety-aware weighting keeps the climate indices used in each model specification tied to the regions that actually produce the variety in question, rather than averaging over areas that are climatically irrelevant to it.
 
 *The variety-specific production weights are now constructed for each group. For the Arabica group, the twelve contributing countries are assigned weights proportional to their Arabica production share, adjusted by the empirically computed variety splits for mixed producers. The resulting weights sum to one and reflect the long-run structural contribution of each country to global Arabica supply over 2000–2024.*
 
@@ -981,9 +981,9 @@ kable(df_poids_robusta,
 
 ### Climate Data Source and Spatial Resolution
 
-Temperature and precipitation data are sourced from the World Bank Climate Knowledge Portal (CCKP), which provides access to the ERA5 reanalysis dataset produced by the European Centre for Medium-Range Weather Forecasts (ECMWF). ERA5 offers a spatial resolution of 0.25 degrees (approximately 28 km × 28 km at the equator), which is among the finest resolutions available for global gridded climate datasets covering the full 2000–2023 period.
+Temperature and precipitation data are sourced from the World Bank Climate Knowledge Portal (CCKP), which provides access to the ERA5 reanalysis dataset produced by the European Centre for Medium-Range Weather Forecasts (ECMWF). ERA5 offers a spatial resolution of 0.25 degrees (approximately 28 km × 28 km at the equator), among the finest available for global gridded climate datasets covering the full 2000–2023 period.
 
-Data are extracted at the Administrative Division Level 1 (ADM1), that is, at the province or state level within each country. For each country, a national monthly average is computed by taking the simple arithmetic mean across all ADM1 regions, yielding a single national climate series per country and per month.
+Data are extracted at the Administrative Division Level 1 (ADM1), the province or state level within each country, and averaged into a single national monthly series per country by taking the simple arithmetic mean across all ADM1 regions.
 
 ### Construction of the Weighted Climate Indices
 
@@ -997,7 +997,7 @@ The production weights are held constant at their 2000–2024 averages rather th
 
 *This chunk reads the ERA5 precipitation files for all 14 producer countries, computes a national monthly average across ADM1 regions within each country, and then aggregates the 14 national series into a single production-weighted global precipitation index. The reading logic is encapsulated in a reusable function that is applied to all 14 files simultaneously via `mapply()`. The resulting index is saved to disk for reuse in the final dataset assembly chunk.*
 
-```{r precipitations, message=FALSE}
+```{r precipitations, message=FALSE, results='hide'}
 
 cat("Running precipitation chunk — this may take a few minutes...\n")
 
@@ -1121,7 +1121,7 @@ write.csv(df_precip_all %>% select(date, starts_with("precip_")),
 
 *This chunk applies the exact same pipeline as the precipitation chunk to the temperature data. The `lire_climat_pays()` function defined previously is reused without modification, only the input file list, the variable prefix and the output filename change. The resulting production-weighted temperature index is saved to disk alongside the precipitation index.*
 
-```{r temperatures, message=FALSE}
+```{r temperatures, message=FALSE, results='hide'}
 
 cat("Running temperature chunk — this may take a few minutes...\n")
 
@@ -1195,9 +1195,9 @@ write.csv(df_temp_all %>% select(date, starts_with("temp_")),
 
 The Oceanic Niño Index (ONI) is the standard measure of the El Niño–Southern Oscillation (ENSO) phenomenon published by the National Oceanic and Atmospheric Administration (NOAA). It measures the three-month running average of sea surface temperature anomalies in the Niño 3.4 region of the central equatorial Pacific Ocean (5°N–5°S, 120°–170°W), expressed as a departure from a 30-year climatological baseline updated every five years.
 
-The NOAA ONI file reports values for overlapping three-month seasons (DJF, JFM, FMA, ..., NDJ) rather than individual calendar months. This format reflects the fact that ENSO classifications are based on three-month running averages to reduce noise. To align the ONI series with the monthly frequency of all other variables in the dataset, each three-month season is assigned to its central month: DJF → January, JFM → February, FMA → March, and so on.
+The NOAA ONI file reports values for overlapping three-month seasons (DJF, JFM, FMA, ..., NDJ) rather than individual calendar months, reflecting the fact that ENSO classifications are themselves based on three-month running averages to reduce noise. To align the ONI series with the monthly frequency of the rest of the dataset, each season is assigned to its central month: DJF → January, JFM → February, FMA → March, and so on.
 
-*This chunk reads the NOAA ONI file, converts its three-month seasonal format to individual calendar months, and produces the ENSO time series plot. The key processing step is the season-to-month mapping: the NOAA file reports overlapping three-month averages (DJF, JFM, etc.) rather than single months, so each season is assigned to its central month before the series can be aligned with the rest of the monthly dataset.*
+*This chunk reads the raw NOAA ONI file, applies the season-to-month mapping described above, and produces the ENSO time series plot*
 
 ```{r oceanic_nino_index, message=FALSE}
 
@@ -1293,25 +1293,27 @@ ggplot(df_oni_plot, aes(x = date_fmt)) +
   scale_x_date(date_breaks = "2 years", date_labels = "%Y")
 ```
 
-The ONI series over 2000–2023 reveals an alternation between El Niño and La Niña episodes of varying intensity. The most severe El Niño episode of the period occurred in 2015–2016, with anomalies exceeding +2.5°C. Strong La Niña episodes are visible in 2000–2001, 2007–2008 and 2010–2011. Over the full period, La Niña months (89) outnumber El Niño months (71), with the remaining 128 months classified as neutral. The series fluctuates around zero with no long-term trend, suggesting stationarity, consistent with the known mean-reverting behaviour of ENSO cycles.
+The ONI series over 2000–2023 alternates between El Niño and La Niña episodes of varying intensity. The most severe El Niño episode of the period hits in 2015–2016, with anomalies exceeding +2.5°C, while strong La Niña episodes stand out in 2000–2001, 2007–2008 and 2010–2011. La Niña months (89) outnumber El Niño months (71) over the full period, with the remaining 128 classified as neutral. The series fluctuates around zero with no long-term trend, consistent with the known mean-reverting behaviour of ENSO cycles and suggestive of stationarity.
 
 ## Commitments of Traders (COT) — Managed Money Net Position
 
-The Commitments of Traders (COT) report is a weekly publication of the Commodity Futures Trading Commission (CFTC), the US regulatory authority for futures markets. It discloses the aggregate open positions held by different categories of market participants in futures and options contracts traded on US exchanges.
+The Commitments of Traders (COT) report is a weekly publication of the Commodity Futures Trading Commission (CFTC), the US regulatory authority for futures markets, disclosing the aggregate open positions held by different categories of market participants in futures and options contracts traded on US exchanges.
 
-This study uses the Disaggregated Futures-Only report, which divides market participants into four categories: Producer/Merchant/Processor/User (physical commercials), Swap Dealers, Managed Money (speculative funds) and Other Reportables. The Managed Money category encompasses commodity trading advisors, commodity pool operators and hedge funds that hold positions for speculative or investment purposes. Historical data are available from June 2006 onward, which defines the start of the speculative positioning variable in the dataset.
+This study uses the Disaggregated Futures-Only report, which splits market participants into four categories: Producer/Merchant/Processor/User (physical commercials), Swap Dealers, Managed Money (speculative funds) and Other Reportables. Managed Money covers commodity trading advisors, commodity pool operators and hedge funds holding positions for speculative or investment purposes rather than physical exposure to the underlying commodity, and historical data for this category only go back to June 2006, which sets the start date for the speculative positioning variable used in this dataset.
 
-The variable constructed is the net position of the Managed Money category on the Coffee C contract (ICE Futures U.S., contract symbol KC):
+A long position is a contract to buy the underlying commodity at a set price, profiting if the price rises; a short position is a contract to sell, profiting if the price falls. The variable constructed here is the net position of the Managed Money category on the Coffee C contract (ICE Futures U.S., contract symbol KC), the difference between its aggregate long and short holdings:
 
 $$\text{Net}_{MM}(t) = \text{Long}_{MM}(t) - \text{Short}_{MM}(t)$$
 
-A positive net position indicates that speculative funds hold more long contracts than short, implying a net expectation of rising coffee prices. A negative net position signals a net bearish stance.
+A positive net position means speculative funds hold more long contracts than short, implying a net expectation of rising prices; a negative net position signals the opposite, a net bearish stance.
 
-Weekly observations are aggregated to monthly frequency by computing the arithmetic mean of all reports published within each calendar month. This averaging is preferred to using the last weekly observation because it is more robust to end-of-month position adjustments associated with contract expiry.
+Weekly observations are aggregated to monthly frequency by taking the arithmetic mean of all reports published within each calendar month, which is more robust to the position adjustments that tend to cluster around contract expiry at month-end than simply using the last weekly observation would be.
 
 *This chunk reads and consolidates the ten CFTC Disaggregated COT files, extracts the Coffee C contract rows, computes the Managed Money net position for each weekly report, and aggregates to monthly frequency. Each file covers a different time span, one consolidated historical file for 2006–2015 and one annual file per year from 2016 onward, so all ten are stacked into a single data frame before any aggregation takes place. The resulting monthly series is saved to disk and visualised as a ribbon chart distinguishing net long from net short positioning.*
 
-```{r commitments_of_traders, message=FALSE}
+```{r commitments_of_traders, message=FALSE, results='hide'}
+
+cat("Running COT chunk — reading and consolidating 10 files, this may take a few minutes...\n")
 
 # ----------------------------------------------------------
 # READING FUNCTION — CFTC DISAGGREGATED COT FILE
@@ -1441,9 +1443,11 @@ ggplot(df_cot_plot, aes(x = date_fmt)) +
   scale_y_continuous(labels = scales::comma)
 ```
 
-The Managed Money net position on the Coffee C contract shows considerable variation over the 2006–2023 period, oscillating between a peak of approximately +60,000 net long contracts in 2008 and a trough of nearly −115,000 net short contracts in 2018–2019. The series reveals several distinct phases: a predominantly long positioning in 2007–2008 coinciding with the commodity price boom, a net short episode in 2012–2013 during the price decline of that period, and a recovery toward net long positions from 2014 onward. The most extreme net short episode of the period occurred in 2018–2019, followed by a gradual return toward net long positioning from 2020 onward.
+The Managed Money net position on the Coffee C contract shows considerable variation over 2006–2023, ranging from a peak of roughly +60,000 net long contracts in 2008 to a trough of nearly −115,000 net short contracts in 2018–2019, its most extreme episode of the period. The series moves through several distinct phases: predominantly long positioning in 2007–2008 coinciding with the commodity price boom, a net short episode in 2012–2013 during that period's price decline, a recovery toward net long positions from 2014 onward, then the sharp net short swing of 2018–2019 itself, followed by a gradual return to net long positioning from 2020 onward.
 
 ## Final Dataset Assembly
+
+With every variable processed and saved individually, this section brings them together into the single monthly dataset used throughout the rest of the analysis.
 
 *This chunk assembles the final dataset used throughout the modelling phase. It reloads the four climate and speculative indices saved to disk by earlier chunks, then joins all variables onto a complete monthly date spine to form the monthly dataset. The result is written to disk as the definitive analytical input for all subsequent chunks.*
 
@@ -1559,12 +1563,16 @@ kable(df_summary,
       caption   = "Summary of the final dataset",
       col.names = c("Dataset", "Period", "Observations", "Variables"),
       booktabs  = TRUE,
-      row.names = FALSE) %>%
+      row.names = FALSE,
+      align     = c("l", "c", "c", "c")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE)
+                font_size = 12, full_width = FALSE,
+                position = "left") %>%
+  row_spec(0, bold = TRUE, background = "#4a4a4a", color = "white") %>%
+  row_spec(1, bold = TRUE)
 ```
 
-The final dataset is summarised in the table above. It covers the full 2000–2023 period with 288 observations across 16 variables.
+The final dataset covers the full 2000–2023 period with 288 observations across 16 variables, as summarised above.
 
 *This chunk audits the missing value structure of the monthly dataset and displays only the variables that contain at least one missing observation. All three gaps identified here are expected and documented: they arise from data availability constraints established in the data collection phase, not from processing errors. The table is computed dynamically so that counts update automatically if the dataset changes.*
 
@@ -1600,18 +1608,20 @@ kable(df_na,
       caption   = "Missing values in the monthly dataset",
       col.names = c("Variable", "N missing", "% missing"),
       booktabs  = TRUE,
-      row.names = FALSE) %>%
+      row.names = FALSE,
+      align     = c("l", "c", "c")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 11, full_width = FALSE)
+                font_size = 11, full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, background = "#4a4a4a", color = "white")
 ```
 
-Three variables contain missing values, all of which are expected and arise from data availability constraints documented in the preceding sections. First, Robusta futures prices are missing for the 96 months spanning January 2000 to December 2007, as Refinitiv data for this contract are only available from 2008 onward. Models using Robusta as the dependent variable are therefore estimated on the 2008–2023 sub-period only. Second, the Managed Money net position (COT) is missing for the 77 months preceding June 2006, as the CFTC Disaggregated Futures-Only report was not published before that date. Third, world consumption is missing for the 12 months of 2000, reflecting incomplete country-level reporting in the USDA PSD database for the first crop year of the analysis period. No imputation is applied to any of these variables; the missing values are handled directly in the modelling phase by restricting relevant model specifications to the sub-periods for which all required variables are available.
+Three variables contain missing values, all expected and already flagged in the preceding sections. Robusta futures prices are missing for the 96 months from January 2000 to December 2007, since Refinitiv only covers this contract from 2008 onward, which is why models using Robusta as the dependent variable are estimated on the 2008–2023 sub-period only. The Managed Money net position (COT) is missing for the 77 months before June 2006, when the CFTC Disaggregated Futures-Only report was first published, and world consumption is missing for the 12 months of 2000, reflecting incomplete country-level reporting in the USDA PSD database for that first crop year. **None of these gaps are imputed; each is handled directly in the modelling phase by restricting the relevant model specification to the sub-period where all required variables are available**.
 
-All variables are initially retained in their original levels for exploratory analysis. The question of whether individual series require transformation prior to model estimation is addressed in the stationarity analysis in Section 4.
+All variables are initially kept in their original levels for exploratory analysis, with the question of whether individual series need transforming before model estimation addressed separately in the stationarity analysis.
 
 *This chunk assembles the two variety-specific datasets used in the robustness checks. Both follow the same structure as the main monthly dataset but replace the global climate indices and world supply-demand fundamentals with their variety-specific counterparts. All other variables, including macroeconomic series, the COT net position and the ONI index, are retained unchanged.*
 
-```{r assemblage_vs, message=FALSE}
+```{r assemblage_vs, message=FALSE, results='hide'}
 
 # ----------------------------------------------------------
 # VARIETY-SPECIFIC DATASET ASSEMBLY — ARABICA AND ROBUSTA
@@ -1720,11 +1730,56 @@ cat("Robusta VS dataset:", nrow(dataset_robusta_vs), "obs,",
     ncol(dataset_robusta_vs) - 2, "variables\n")
 ```
 
+Both variety-specific datasets contain 288 observations, matching the full length of the main monthly dataset, and 15 variables each, one fewer than the main dataset's 16 since each retains only its own dependent variable, Arabica or Robusta, rather than both. The four global USDA fundamentals and two global climate indices are otherwise replaced one-for-one by their variety-specific counterparts, so the variable count stays essentially unchanged aside from that single difference.
+
+*This chunk previews six months of the assembled monthly dataset starting January 2008, the first month for which every variable, including Robusta prices, is simultaneously available, giving a concrete look at a complete row of data. The table is transposed, one row per variable and one column per month, so it stays readable within the page width in both HTML and PDF output.*
+
+```{r preview_final_dataset, message=FALSE}
+
+# ----------------------------------------------------------
+# PREVIEW OF THE ASSEMBLED MONTHLY DATASET (TRANSPOSED)
+# Starts at January 2008 rather than the beginning of the sample,
+# since this is the first month for which every variable, including
+# Robusta prices (available from 2008 onward, the latest-starting
+# series in the dataset), is simultaneously non-missing. This gives
+# a preview with no NA values, showing what a complete row of data
+# actually looks like rather than the structural gaps already
+# documented in the missing_values chunk above.
+# The table is transposed (one row per variable, one column per
+# month) rather than shown in its natural wide orientation, since
+# 16 variables across would overflow the page width in PDF output,
+# where no horizontal scrolling is possible.
+# ----------------------------------------------------------
+
+df_preview <- dataset_mensuel %>%
+  filter(date >= "2008-01") %>%
+  select(-date_fmt) %>%
+  head(6) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+df_preview_transposed <- df_preview %>%
+  pivot_longer(cols = -date, names_to = "Variable", values_to = "value") %>%
+  pivot_wider(names_from = date, values_from = value)
+
+kable(df_preview_transposed,
+      caption   = "Preview of the assembled monthly dataset (Jan–Jun 2008)",
+      booktabs  = TRUE,
+      row.names = FALSE,
+      align     = c("l", rep("c", 6))) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 9, full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  row_spec(0, bold = TRUE, background = "#4a4a4a", color = "white")
+```
+
+
 # Exploratory Data Analysis
+
+With the monthly dataset assembled, this section examines its structure before moving to model estimation: the distribution of each variable, how the series move over time and relative to one another, and whether they meet the stationarity assumptions the forecasting models depend on.
 
 ## Descriptive Statistics
 
-*This chunk computes descriptive statistics for all numeric variables in the monthly dataset and renders them as a single summary table. Statistics are computed on non-missing observations only, so each variable's N reflects its actual available sample rather than the full 288-month spine. The `do.call(rbind, lapply(...))` pattern iterates over variable names and stacks the results into a single data frame without requiring any external summarisation package.*
+*This chunk computes descriptive statistics for all numeric variables in the monthly dataset and renders them as a single summary table. Statistics are computed on non-missing observations only, so each variable's N reflects its actual available sample rather than the full 288-month spine, with the `do.call(rbind, lapply(...))` pattern iterating over variable names and stacking the results into a single data frame without requiring any external summarisation package.*
 
 ```{r eda_stats}
 
@@ -1762,18 +1817,26 @@ table_stats <- do.call(rbind, lapply(names(vars_num), function(var) {
   )
 }))
 
+# Render with thousands separators (format.args) so large values
+# like Production or Consumption (six-digit figures in thousands
+# of bags) read cleanly, and a bold neutral header consistent with
+# the other non-variety-specific tables in this document (this
+# table spans all 16 variables at once, not split by coffee variety).
 kable(table_stats,
-      caption  = "Descriptive statistics — monthly dataset (2000–2023)",
-      booktabs = TRUE) %>%
+      caption     = "Descriptive statistics — monthly dataset (2000–2023)",
+      booktabs    = TRUE,
+      row.names   = FALSE,
+      format.args = list(big.mark = ",")) %>%
   kable_styling(bootstrap_options = c("striped", "hover"),
-                font_size = 10, full_width = TRUE)
+                font_size = 10, full_width = TRUE) %>%
+  row_spec(0, bold = TRUE, background = "#4a4a4a", color = "white")
 ```
 
-The descriptive statistics confirm several expected properties of the data. Arabica futures prices average 1.31 USD/lb over the full 2000–2023 period, with a maximum of 2.84 USD/lb and a positive skewness of 0.69 indicating occasional sharp upward price movements. Robusta prices, available only from 2008, average 1,837 USD/tonne with a near-symmetric distribution (skewness of 0.11). The Federal Funds Rate exhibits a large gap between its mean (1.79%) and median (1.10%), with a positive skewness of 0.98 consistent with the alternation between near-zero and elevated rate environments visible over the analysis period. The CPI ranges from 168.8 to 307.8, confirming the upward trend visible in the time series plot and the non-stationarity expected from this variable. The Oceanic Niño Index oscillates around a mean of −0.02°C, consistent with its known mean-reverting behaviour around zero. The Managed Money net position shows a large divergence between its mean (2,168 contracts) and median (6,923 contracts), driven by the extreme net short episodes reaching nearly −108,000 contracts, reflected in its negative skewness of −0.81.
+The descriptive statistics confirm several expected properties of the data. Arabica futures prices average 1.31 USD/lb over the full 2000–2023 period, reaching a maximum of 2.84 USD/lb, with a positive skewness of 0.69 pointing to occasional sharp upward moves. Robusta, available only from 2008, averages 1,837 USD/tonne and comes closer to a symmetric distribution (skewness of 0.11). The Federal Funds Rate tells a different story: its mean (1.79%) sits well above its median (1.10%), and a skewness of 0.98 fits the pattern already visible in the time series, alternating between near-zero and elevated rate environments. CPI ranges from 168.8 to 307.8, which lines up with the upward trend seen in the time series plot and the non-stationarity expected of this variable. The Oceanic Niño Index sits close to zero on average (−0.02°C), consistent with the mean-reverting behaviour ENSO is known for. The Managed Money net position shows the widest gap of all between mean (2,168 contracts) and median (6,923 contracts), driven by the extreme net short episodes that pull it down toward −108,000 contracts and leave it with a skewness of −0.81.
 
 ## Time Series Overview
 
-*This chunk produces the first of two time series overview panels, covering the two dependent variables and two key macroeconomic drivers. Each series is drawn from the fully assembled monthly dataset rather than from the individual source objects, confirming that the join operations in the assembly chunk preserved all observations correctly. Robusta rows with NA prices are filtered out before plotting to avoid a misleading gap on the left of that panel.*
+*This chunk produces the first of two time series overview panels, covering the two dependent variables and two key macroeconomic drivers. Each series is drawn from the fully assembled monthly dataset rather than the individual source objects, confirming that the join operations in the assembly chunk preserved every observation correctly, with Robusta rows carrying an NA price filtered out beforehand to avoid a misleading gap on the left of that panel.*
 
 ```{r eda_series_1, fig.width=11, fig.height=6}
 # ----------------------------------------------------------
@@ -1827,9 +1890,9 @@ gridExtra::grid.arrange(p_arabica, p_robusta, p_wti, p_dxy,
                         top  = "Price and macroeconomic variables, 2000–2023")
 ```
 
-The four series exhibit markedly different dynamics over the analysis period. Arabica futures prices display two pronounced peaks, one around 2011 and another in 2021–2022, separated by a prolonged trough over 2013–2019. Robusta prices, available from 2008, follow a broadly similar trajectory at higher absolute levels in USD/tonne terms, declining from an initial peak near 2008 to a trough around 2015–2016 before recovering sharply from 2021 onward. WTI crude oil displays the highest volatility of the four series, with a sharp spike in 2008, a collapse in 2020, and a recovery above 100 USD/barrel in 2022. The US Dollar Index follows a broad multi-year cycle, declining from above 110 in the early 2000s to a trough near 70 in 2008, recovering through the 2010s, and rising sharply from 2021 onward.
+The four series trace markedly different paths over the analysis period. Arabica futures prices show two pronounced peaks, one around 2011 and another in 2021–2022, separated by a prolonged trough spanning 2013–2019. Robusta, available from 2008, follows a broadly comparable rhythm over the years the two series overlap, reaching its own peak around the same period as Arabica near 2011, before working through several smaller cycles of decline and recovery and eventually rising sharply again from 2021 onward. WTI crude oil is by far the most volatile of the four, spiking sharply in 2008, collapsing in 2020, and climbing back above 100 USD/barrel in 2022. The US Dollar Index follows a longer, broader cycle instead, declining from above 120 in the early 2000s to a trough near 70 in 2008, recovering gradually through the 2010s, then rising sharply from 2021 onward.
 
-*This chunk produces the second time series overview panel, covering the four climate and speculative variables. It mirrors the structure of the previous panel but groups variables that share a common interpretive theme, supply-side conditions (precipitation, temperature, ENSO) and market positioning (COT), rather than mixing them with price series. The ONI and COT panels reuse the dual-ribbon design introduced in their dedicated processing chunks for visual consistency.*
+*This chunk produces the second time series overview panel, covering the four climate and speculative variables. It mirrors the structure of the previous panel but groups variables that share a common interpretive theme, supply-side conditions (precipitation, temperature, ENSO) and market positioning (COT), rather than mixing them with price series, and reuses the dual-ribbon design already introduced for ONI and COT in their dedicated processing chunks for visual consistency.*
 
 ```{r eda_series_2, fig.width=11, fig.height=6}
 
@@ -1911,11 +1974,11 @@ gridExtra::grid.arrange(p_precip, p_temp, p_oni, p_cot,
                         top  = "Climate and speculative variables, 2000–2023")
 ```
 
-Among the climate variables, the precipitation index displays a stable seasonal rhythm with no discernible trend, while the temperature index drifts upward noticeably from the mid-2010s, a pattern that will be examined in the stationarity analysis below. The ONI series oscillates around zero as expected, with the 2015–2016 episode standing out as the most pronounced of the period. The COT net position alternates between extended net long and net short episodes, with the most extreme net short positioning occurring around 2018–2019.
+Among the climate variables, the precipitation index keeps a stable seasonal rhythm with no discernible trend, while temperature drifts upward noticeably from the mid-2010s, a pattern examined further in the stationarity analysis below. ONI oscillates around zero as expected, with the 2015–2016 episode standing out as the most pronounced of the period. The COT net position alternates between extended net long and net short episodes, and its most extreme net short stretch falls around 2018–2019.
 
 ## Correlation Analysis
 
-The correlation matrix below is computed over the 2008–2023 sub-period, which is the longest interval for which all variables, including Robusta prices and the COT net position, are simultaneously available. Pearson correlation coefficients are reported, as they are standard for continuous economic and financial series and measure the degree of linear association between variables, consistent with the linear benchmark models estimated in the following section.
+The correlation matrix below covers the 2008–2023 sub-period, the longest interval over which every variable, including Robusta prices and the COT net position, is simultaneously available. Pearson correlation coefficients are reported here, since they measure the degree of linear association between variables and align with the linear benchmark models estimated in the following section.
 
 The coefficient between two variables $X$ and $Y$ is defined as:
 
@@ -1923,7 +1986,7 @@ $$r_{XY} = \frac{\sum_{t=1}^{T}(X_t - \bar{X})(Y_t - \bar{Y})}{\sqrt{\sum_{t=1}^
 
 where $T$ denotes the number of observations, and coefficients range from $-1$ to $+1$.
 
-*This chunk computes the Pearson correlation matrix across all 16 variables and renders it as a hierarchically clustered heatmap, restricted to the 2008–2023 sub-period so that the matrix reflects a complete and balanced comparison across all variable pairs. `na.omit()` is applied after the date filter to remove any remaining sporadic missing values before passing the data to `cor()`.*
+*This chunk computes the Pearson correlation matrix across all 16 variables and renders it as a hierarchically clustered heatmap, restricted to the 2008–2023 sub-period so the matrix reflects a complete and balanced comparison across all variable pairs, with `na.omit()` applied after the date filter to remove any remaining sporadic missing values before passing the data to `cor()`.*
 
 ```{r eda_correlation, fig.width=9, fig.height=8}
 
@@ -1983,15 +2046,15 @@ corrplot(mat_corr,
          mar         = c(0, 0, 2, 0))
 ```
 
-The correlation matrix reveals several patterns of interest. Among the price variables, Arabica and Sugar display the strongest pairwise correlation (0.71), while Arabica and Robusta are moderately correlated (0.67). The most salient feature of the matrix is the high degree of collinearity among the macroeconomic and fundamental variables, as Production, Consumption, Exports and CPI form a tightly correlated cluster with pairwise coefficients ranging from 0.73 to 0.92, reflecting their common upward trends over the period. This multicollinearity motivates the principal component analysis conducted in the following section.
+The correlation matrix reveals several patterns of interest. Among the price variables, Arabica and Sugar show the strongest pairwise correlation (0.71), while Arabica and Robusta sit more moderately at 0.67. The matrix's most salient feature, though, is the tight cluster formed by Production, Consumption, Exports and CPI, with pairwise coefficients ranging from 0.73 to 0.94, a direct reflection of their shared upward trends over the period and the multicollinearity that motivates the principal component analysis in the following section.
 
-Arabica prices show a moderate negative correlation with Ending Stocks (−0.46) and with the ONI index (−0.36). The correlation between Arabica and the COT net position (0.57) is among the strongest observed between a non-price predictor and a price variable. WTI and DXY display a notable negative correlation (−0.52). Climate variables show relatively weak correlations with prices in levels, with coefficients generally below 0.20 in absolute value.
+Arabica prices carry a moderate negative correlation with Ending Stocks (−0.46) and with ONI (−0.36), while its correlation with the COT net position (0.57) stands out as one of the strongest observed between any non-price predictor and a price variable. WTI and DXY are notably negatively correlated (−0.52). Climate variables, by contrast, show relatively weak correlations with prices in levels, generally staying below 0.20 in absolute value.
 
 ## Principal Component Analysis
 
-The high degree of collinearity observed in the correlation matrix motivates a principal component analysis of the predictor space. The PCA is conducted purely as a diagnostic tool to quantify the extent of redundancy among the 14 explanatory variables; no principal component is retained as a regressor in the forecasting models.
+The high degree of collinearity observed in the correlation matrix motivates a principal component analysis of the predictor space, used here purely as a diagnostic tool to quantify how much redundancy exists among the 14 explanatory variables. No component is retained as a regressor anywhere in the forecasting models that follow.
 
-*This chunk runs a principal component analysis on the 14 explanatory variables to quantify the multicollinearity already suggested by the correlation matrix. The PCA is performed on the same 2008–2023 sub-period, with all variables standardised to zero mean and unit variance before decomposition. No component is used downstream in the forecasting models; the analysis is purely diagnostic and serves only to confirm the extent of redundancy in the predictor set.*
+*This chunk runs the PCA on the same 2008–2023 sub-period as the correlation matrix, standardising all variables to zero mean and unit variance before decomposition, and produces the scree plot used to read off how much variance the leading components capture.*
 
 ```{r pca, fig.width=10, fig.height=5}
 
@@ -2108,13 +2171,13 @@ p_scree <- ggplot(df_scree[1:10, ], aes(x = PC)) +
 p_scree
 ```
 
-The scree plot confirms that the predictor set is genuinely multidimensional, with five components required to cross the conventional 80% threshold. No single factor dominates the variance structure, even though strong pairwise collinearity exists among specific subsets of variables as shown in the correlation matrix above.
+The scree plot confirms that the predictor set is genuinely multidimensional: it takes five components to cross the conventional 80% threshold, and no single factor dominates the variance structure, even with the strong pairwise collinearity already visible among specific variable subsets in the correlation matrix above.
 
 ## Stationarity Tests
 
-Prior to model estimation, all series are tested for stationarity using two complementary procedures. The Augmented Dickey-Fuller (ADF) test evaluates the null hypothesis of a unit root, with rejection at the 5% level indicating stationarity. The KPSS test evaluates the null hypothesis of stationarity, with rejection at the 5% level indicating non-stationarity. A series is classified as stationary when both tests agree, that is, when the ADF rejects its null and the KPSS does not reject its null. This dual-confirmation criterion reduces the risk of misclassification arising from the size distortions of each test individually. Series for which at least one test indicates non-stationarity are re-tested in first differences to determine the appropriate integration order $d$ prior to inclusion in the ARIMAX and linear regression models.
+Prior to model estimation, all series are tested for stationarity using two complementary procedures. The Augmented Dickey-Fuller (ADF) test evaluates the null hypothesis of a unit root, with rejection at the 5% level indicating stationarity, while the KPSS test works the other way around, evaluating the null hypothesis of stationarity, with rejection at the 5% level indicating non-stationarity instead. A series is classified as stationary only when both agree, that is, when the ADF rejects its null and the KPSS does not reject its own; this dual-confirmation criterion reduces the risk of misclassification that can arise from the size distortions each test carries individually. Series where at least one test points to non-stationarity are re-tested in first differences to establish the appropriate integration order $d$ before being included in the ARIMAX and linear regression models.
 
-*The chunk below implements this testing procedure for all 15 variables. Series flagged as non-stationary by at least one test are automatically selected for re-testing in first differences, so the second table is generated without manual intervention. Result columns are colour-coded in green for stationary and red for non-stationary, making disagreements between the two tests directly visible.*
+*The chunk below implements this testing procedure for all 15 variables, automatically selecting any series flagged as non-stationary by at least one test for re-testing in first differences, so the second table is generated without manual intervention. Result columns are colour-coded green for stationary and red for non-stationary, making disagreements between the two tests directly visible.*
 
 ```{r stationarity, warning=FALSE}
 
@@ -2241,17 +2304,17 @@ kable(resultats_diff,
                                 "darkgreen", "red"))
 ```
 
-The results from the two stationarity tests are largely consistent and confirm the expected properties of the series. In levels, the majority of variables are non-stationary according to at least one of the two tests. The two dependent variables present contrasting patterns: Arabica futures prices are classified as non-stationary by both tests, confirming the presence of a unit root, while Robusta futures prices yield conflicting results, with the ADF failing to reject the unit root null and the KPSS failing to reject stationarity.
+The results from the two stationarity tests are largely consistent and confirm the expected properties of the series. In levels, most variables come out non-stationary according to at least one of the two tests. The two dependent variables split in an interesting way here: Arabica futures prices are flagged non-stationary by both tests, confirming a unit root, while Robusta yields a genuinely mixed verdict, with the ADF failing to reject the unit root and the KPSS failing to reject stationarity.
 
-Several additional series present conflicting results in levels. Production and Consumption are stationary according to the ADF but non-stationary according to the KPSS, while Robusta futures and Ending stocks show the reverse pattern. Temperature presents the same conflict as Production and Consumption. In such ambiguous cases, the first-differenced results are decisive.
+A few other series land in that same ambiguous territory. Production and Consumption come out stationary under the ADF but non-stationary under the KPSS, while Robusta futures and Ending stocks show the opposite split, and Temperature falls into the same camp as Production and Consumption. Wherever the two tests disagree like this, the first-differenced results settle the question.
 
-The second table confirms that a single round of differencing is sufficient to achieve stationarity for all 13 non-stationary or conflicted series: every variable in first differences is classified as stationary by both the ADF and KPSS tests simultaneously. This establishes $d=1$ as the appropriate integration order for the non-stationary series, the treatment of which varies across model families as discussed in the methodology. The two variables classified as stationary in levels by both tests, namely the precipitation index and the ONI, will be included without transformation.
+The second table confirms that a single round of differencing is enough to achieve stationarity across all 13 non-stationary or conflicted series: every one of them comes out stationary under both the ADF and KPSS once differenced. This establishes $d=1$ as the integration order these series formally require. In practice, only ARIMAX applies this internally through `auto.arima()`'s own differencing; MLR and the machine learning models are instead estimated on levels, a deliberate choice discussed as a limitation in the methodology. The precipitation index and ONI, the two variables already stationary in levels by both tests, are included without transformation across every model.
 
 ## Seasonality Analysis
 
-The seasonality analysis examines whether coffee futures prices exhibit systematic within-year patterns that repeat across calendar months. Detecting such patterns is relevant for model specification: if prices follow predictable seasonal cycles, they would need to be accounted for explicitly in the ARIMAX framework through seasonal differencing or seasonal AR/MA components. 
+This analysis checks whether coffee futures prices follow systematic within-year patterns that repeat across calendar months, a question that matters for model specification: predictable seasonal cycles would need to be captured explicitly in the ARIMAX framework, either through seasonal differencing or seasonal AR/MA components.
 
-*The chunk below implements this analysis for both series. Robusta rows prior to 2008 are filtered out before grouping so that monthly averages reflect only the years for which data are available. The ±1 standard deviation ribbon around each monthly mean provides a visual gauge of interannual dispersion: a narrow band relative to the cross-month range signals consistent seasonality, while a wide band indicates that year-to-year variation dominates any calendar-month pattern.*
+*The chunk below runs this analysis for both series, filtering out Robusta rows prior to 2008 so its monthly averages only reflect years with actual data. The ±1 standard deviation ribbon around each monthly mean gauges interannual dispersion: a narrow band relative to the cross-month range signals consistent seasonality, while a wide band means year-to-year variation dominates over any calendar-month pattern.*
 
 ```{r seasonality, fig.width=10, fig.height=8}
 
@@ -2301,7 +2364,7 @@ df_sais_robusta <- dataset_mensuel %>%
 p_sais_arabica <- ggplot(df_sais_arabica,
                           aes(x = nom_mois, y = moy, group = 1)) +
   geom_ribbon(aes(ymin = moy - sd, ymax = moy + sd),
-              fill = "lightblue", alpha = 0.4) +
+              fill = "lightblue", color = "steelblue", alpha = 0.4, linewidth = 0.3) +
   geom_line(color = "#8B4513", linewidth = 1) +
   geom_point(color = "#8B4513", size = 2) +
   labs(title    = "Arabica price seasonality — monthly average (2000–2023)",
@@ -2312,7 +2375,7 @@ p_sais_arabica <- ggplot(df_sais_arabica,
 p_sais_robusta <- ggplot(df_sais_robusta,
                           aes(x = nom_mois, y = moy, group = 1)) +
   geom_ribbon(aes(ymin = moy - sd, ymax = moy + sd),
-              fill = "lightgreen", alpha = 0.4) +
+              fill = "lightgreen", color = "darkgreen", alpha = 0.4, linewidth = 0.3) +
   geom_line(color = "#2E8B57", linewidth = 1) +
   geom_point(color = "#2E8B57", size = 2) +
   labs(title    = "Robusta price seasonality — monthly average (2008–2023)",
@@ -2323,39 +2386,41 @@ p_sais_robusta <- ggplot(df_sais_robusta,
 gridExtra::grid.arrange(p_sais_arabica, p_sais_robusta, ncol = 1)
 ```
 
-Both series display weak seasonal patterns across the calendar year. Arabica prices show virtually no systematic monthly variation, with the cross-month range of average prices spanning less than USD 0.05/lb, a negligible amplitude relative to the overall price variability captured by the wide confidence bands. This finding is consistent with the global nature of the Arabica futures market, where prices are driven primarily by supply shocks, macroeconomic conditions and speculative positioning rather than predictable seasonal cycles.
+Both series show weak seasonal patterns across the calendar year. Arabica in particular shows almost no systematic monthly variation, with the cross-month range of average prices spanning less than USD 0.05/lb, a negligible amplitude next to the wide confidence bands capturing overall price variability. 
 
-Robusta prices exhibit a slightly more pronounced seasonal profile, with averages rising gradually from January through August before declining toward year-end. However, the amplitude of this seasonal variation remains small relative to the interannual volatility captured by the standard deviation bands, suggesting that seasonality is not a dominant driver of Robusta price dynamics either.
+Robusta shows a somewhat more visible seasonal profile, with averages climbing gradually from January through August before easing back toward year-end. Even so, this seasonal swing stays small relative to the interannual volatility captured by the standard deviation bands, suggesting seasonality isn't a major driver of Robusta price dynamics either.
 
-Overall, the absence of strong seasonality in both series is an important finding for the modelling phase: it implies that seasonal differencing or seasonal ARIMA components are unlikely to be necessary, and that the main sources of price variation are structural and cyclical rather than calendar-driven.
+Taken together, the absence of strong seasonality in both series matters for the modelling phase: seasonal differencing or seasonal ARIMA components are unlikely to be necessary, and the main sources of price variation are structural and cyclical rather than tied to the calendar.
 
 # Methodology
 
+This section lays out how the six forecasting models are specified, estimated and evaluated, from the treatment of non-stationary series through to the walk-forward validation protocol applied uniformly across all six.
+
 ## Model Overview and Estimation Strategy
 
-This study estimates six forecasting models for each of the two dependent variables — Arabica and Robusta futures prices. Two econometric models serve as interpretable benchmarks: an ARIMAX and a multiple linear regression (MLR). Four machine learning models are estimated alongside: Random Forest, XGBoost, Support Vector Machine (SVM) and Artificial Neural Network (ANN). All models are estimated separately for Arabica and Robusta, reflecting the distinct market structures and price determinants of the two varieties.
+This study estimates six forecasting models for each of the two dependent variables, Arabica and Robusta futures prices. Two econometric models serve as interpretable benchmarks, ARIMAX and multiple linear regression (MLR), alongside four machine learning models: Random Forest, XGBoost, Support Vector Machine (SVM) and Artificial Neural Network (ANN). All six are estimated separately for each variety, reflecting the distinct market structures and price determinants of Arabica and Robusta.
 
-The monthly dataset covering January 2000 to December 2023 is used for all models except those involving Robusta prices or the COT net position, which are estimated on the restricted sub-periods for which these variables are available. All models are evaluated on the basis of three performance metrics: the coefficient of determination ($R^2$), the Mean Squared Error (MSE) and the Mean Absolute Error (MAE).
+The monthly dataset covering January 2000 to December 2023 is used throughout, except for models involving Robusta prices or the COT net position, which are restricted to the sub-periods where these variables are actually available. Every model is evaluated on the same three metrics: the coefficient of determination ($R^2$), the Mean Squared Error (MSE) and the Mean Absolute Error (MAE).
 
 ## Data Preprocessing and Stationarity Handling
 
-The stationarity analysis conducted in the preceding section established that the majority of series are integrated of order one, that is, $d=1$. For the ARIMAX model, non-stationarity is handled internally by `auto.arima()`, which selects the appropriate differencing order $d$ at each estimation step. For the MLR and ML models, all variables are included in levels for the reasons discussed in the following paragraph. The two variables classified as stationary in levels, namely the precipitation index and the ONI, are included without transformation across all model specifications.
+The stationarity analysis in the preceding section established that most series are integrated of order one, $d=1$. ARIMAX handles this internally, with `auto.arima()` selecting the appropriate differencing order at each estimation step, while MLR and the machine learning models are instead estimated on levels, for the reasons discussed below. The precipitation index and ONI, the two variables already stationary in levels, are included without transformation across every specification.
 
-For the machine learning models, which impose no distributional assumptions on the input series, all variables are included in their original levels. All variables are normalised to the $[0,1]$ range using Min-Max scaling prior to ML model estimation :
+The machine learning models impose no distributional assumptions on their inputs, so all variables enter in their original levels, normalised to the $[0,1]$ range via Min-Max scaling before estimation:
 
 $$x_{\text{scaled}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
 
-Missing values, arising from the Robusta data gap (2000–2007) and the COT availability constraint (2000–June 2006), are handled by restricting the estimation sample to the sub-period for which all required variables are simultaneously available.
+Missing values, arising from the Robusta data gap (2000–2007) and the COT availability constraint (2000–June 2006), are handled by restricting each estimation sample to the sub-period where all required variables are simultaneously available.
 
-A note on the treatment of non-stationary series in the machine learning models is warranted. While the ARIMAX model handles non-stationarity internally through the differencing parameter $d$ selected by `auto.arima()`, the ML models are estimated on the original levels of all series. This choice is deliberate: estimating ML models on first-differenced series, which represent monthly price changes rather than price levels, yielded near-zero $R^2$ values, confirming that month-to-month price variations are largely unpredictable at this frequency. Estimating on levels allows the ML models to exploit the trending co-movement among variables that carries genuine predictive information about the price trajectory, at the cost of a potential spurious regression concern. This trade-off is acknowledged as a limitation of the study and is discussed further in the limitations section.
+The treatment of non-stationarity in the machine learning models deserves a closer look. ARIMAX handles it internally through the differencing parameter $d$ selected by `auto.arima()`, but the ML models are estimated on the original levels of every series instead, a deliberate choice. Estimating them on first-differenced series, which represent monthly price changes rather than price levels, produced near-zero $R^2$ values, confirming that month-to-month price movements are largely unpredictable at this frequency. Working in levels instead lets the ML models exploit the trending co-movement among variables that carries genuine predictive information about the price trajectory, at the cost of a potential spurious regression concern, a trade-off acknowledged as a limitation and discussed further in that section.
 
 ## Walk-Forward Validation Protocol
 
-All models are evaluated using a walk-forward (expanding window) validation protocol, which avoids the data leakage that would arise from random cross-validation in a time series context. The dataset is split into a training set comprising the first 80% of observations and a test set comprising the remaining 20%, yielding 168 training observations and 43 test observations for the Arabica sample, and 153 training and 39 test observations for the Robusta sample. 
+All models are evaluated using a walk-forward (expanding window) validation protocol, which avoids the data leakage that random cross-validation would introduce in a time series context. The dataset splits into a training set covering the first 80% of observations and a test set covering the remaining 20%, giving 168 training and 43 test observations for Arabica, and 153 training and 39 test observations for Robusta.
 
-The walk-forward procedure expands the training window by one observation at each step, re-estimates the model, and generates a one-step-ahead forecast. Performance metrics are computed on the out-of-sample forecasts accumulated over the full test period: $R^2$ measures the proportion of variance in observed prices explained by the forecasts, MSE penalises large errors through quadratic weighting, and MAE reports the average absolute deviation between forecasts and observed values.
+At each step, the walk-forward procedure expands the training window by one observation, re-estimates the model, and generates a one-step-ahead forecast. Performance metrics are then computed on the out-of-sample forecasts accumulated across the full test period: $R^2$ captures the share of variance in observed prices the forecasts explain, MSE penalises large errors through quadratic weighting, and MAE reports the average absolute deviation between forecasts and observed values.
 
-*The chunk below sets up the shared infrastructure used by all six model chunks: the exogenous variable list, the Min-Max scaling and performance metric functions, and the two dataset variants in levels for Arabica and Robusta separately. The 80/20 split indices are computed once here and passed directly to each model chunk, guaranteeing an identical train/test partition across all estimations.*
+*The chunk below sets up the shared infrastructure used by all six model chunks: the exogenous variable list, the Min-Max scaling and performance metric functions, and the two levels datasets for Arabica and Robusta. The 80/20 split indices are computed once here and passed directly to each model chunk, guaranteeing an identical train/test partition across every estimation.*
 
 ```{r preprocessing, message=FALSE, warning=FALSE}
 
@@ -2514,7 +2579,7 @@ The following sections report the out-of-sample forecasting results for each of 
 
 ## Multiple Linear Regression (MLR)
 
-*This chunk estimates the Multiple Linear Regression benchmark using the same walk-forward expanding window protocol as all other models. Unlike ARIMAX, OLS does not handle non-stationarity internally, so the model is estimated on the levels dataset with the understanding that any spurious regression concern is acknowledged as a limitation. At each step, the entire expanded training window is refitted from scratch using `lm()`, and a one-step-ahead prediction is generated for the current test observation. The code below is written as a sequence of explicit, separate steps rather than as a single chained pipeline, so that each operation can be inspected individually.*
+*This chunk estimates the Multiple Linear Regression benchmark using the same walk-forward expanding window protocol as every other model. Unlike ARIMAX, OLS does not handle non-stationarity internally, so the model is estimated on the levels dataset with the spurious regression concern acknowledged as a limitation rather than corrected for here. At each step, the entire expanded training window is refitted from scratch using `lm()`, generating a one-step-ahead prediction for the current test observation; the code is written as a sequence of explicit, separate steps rather than a single chained pipeline, so each operation can be inspected individually.*
 
 ```{r mlr, message=FALSE, warning=FALSE}
 
@@ -3178,7 +3243,7 @@ Read together with the performance results, this offers a partial answer to why 
 
 ARIMAX combines a standard linear regression on the 14 exogenous predictors with an ARMA structure applied to what that regression leaves unexplained. The idea is simple: prices don't just react to WTI, CPI, and the rest of the predictor set, they also carry their own momentum, so treating the residual as pure noise (the way MLR does) throws away information a time series model can actually use.
 
-*This chunk estimates the ARIMAX model for both coffee series using a walk-forward expanding window. At each step, `auto.arima()` selects the optimal $(p,d,q)$ order by minimising AIC over the current training window, then generates a one-step-ahead forecast using the next row of exogenous regressors. The model is therefore re-specified at every forecast origin, allowing the autoregressive structure to adapt as new observations are added to the training window. As with the MLR function above, the code is written as a sequence of explicit, separate steps.*
+*This chunk estimates the ARIMAX model for both coffee series using a walk-forward expanding window, with the $(p,d,q)$ order fixed rather than re-selected at each step. `auto.arima()` is called once, on the initial training window only, using a widened search ($\max p = \max q= 5$, $\max d =2$, `stepwise = FALSE`, `approximation = FALSE`) to identify the best-fitting order for each series. That order is then held fixed for the remainder of the walk-forward loop: at each step, `Arima()` re-estimates only the coefficients of the fixed-order model on the expanding training window, then generates a one-step-ahead forecast using the next row of exogenous regressors. This tests whether the order chosen on the initial sample generalises to new data, rather than letting the model structure itself adapt at every forecast origin. As with the MLR function above, the code is written as a sequence of explicit, separate steps. Both the initial order selection and every subsequent re-estimation are carried out via maximum likelihood, using a state-space representation and Kalman filter as implemented in the `forecast` package, rather than a closed-form solution such as the one available for OLS; order selection uses AICc, a small-sample-corrected Akaike Information Criterion, to balance model fit against the number of parameters estimated.*
 
 ```{r arimax, message=FALSE, warning=FALSE}
 
@@ -3205,20 +3270,15 @@ library(forecast)
 fit_arimax <- function(df, var_dep, n_train) {
 
   # STEP 1 — Separate the dependent variable from the
-  # exogenous regressors. auto.arima() requires the regressors
-  # as a plain numeric matrix, not a data frame.
+  # exogenous regressors.
   serie_dependante    <- df[[var_dep]]
   matrice_regresseurs <- as.matrix(df[, vars_exo])
 
-  # Safety check: drop any regressor column that is entirely
-  # NA (this should not normally happen, since rows with any
-  # NA were already removed upstream by preparer_niveaux()).
   colonnes_valides    <- apply(matrice_regresseurs, 2,
                                function(col) !all(is.na(col)))
   matrice_regresseurs <- matrice_regresseurs[, colonnes_valides, drop = FALSE]
 
-  # STEP 2 — Split into the initial training set and the test
-  # set, using the row count computed in the preprocessing chunk.
+  # STEP 2 — Split into the initial training set and the test set.
   n_total <- length(serie_dependante)
 
   y_train    <- serie_dependante[1:n_train]
@@ -3229,48 +3289,60 @@ fit_arimax <- function(df, var_dep, n_train) {
 
   n_test <- length(y_test)
 
-  # STEP 3 — Walk-forward loop.
-  # At forecasting step i, auto.arima() is re-estimated on ALL
-  # observations available up to that point: the initial
-  # training set, plus every test-period observation already
-  # passed (rows 1 to i-1 of y_test / xreg_test). The order
-  # (p, d, q) is re-selected by AIC at every step — it is not
-  # fixed in advance. The freshly estimated model then produces
-  # a single one-step-ahead forecast for observation i, using
-  # row i of xreg_test as the future regressor values.
-  #
-  # Search constraints passed to auto.arima():
-  #   max.p = 3, max.q = 3 : keeps the search computationally
-  #     feasible across the ~43 re-estimations of the loop
-  #   max.d = 1            : consistent with the integration
-  #     order established in the stationarity tests
-  #   stepwise = TRUE, approximation = TRUE : faster greedy
-  #     search instead of an exhaustive grid, needed because
-  #     the model is re-estimated at every single step
-  #
-  # tryCatch() catches any estimation failure (which can happen
-  # at the very first steps, when the window is still small)
-  # and records NA for that step instead of stopping the loop.
+  # ----------------------------------------------------------
+  # STEP 3 — SELECT AND FIX THE (p,d,q) ORDER ONCE, ON THE
+  # INITIAL TRAINING SET ONLY.
+  # Search bounds are widened relative to the original walk-
+  # forward specification (max.p/max.q raised from 3 to 5,
+  # max.d raised from 1 to 2) since this search now runs only
+  # once per series rather than at every one of the ~40
+  # walk-forward steps, making a wider search computationally
+  # affordable. approximation = FALSE and stepwise = FALSE are
+  # used here for the same reason: a full, non-greedy search is
+  # feasible when it only has to run a single time.
+  # ----------------------------------------------------------
+
+  modele_ordre_initial <- auto.arima(y_train, xreg = xreg_train,
+                                     stepwise      = FALSE,
+                                     approximation = FALSE,
+                                     max.p = 5, max.q = 5, max.d = 2)
+
+  ordre_fixe <- arimaorder(modele_ordre_initial)[c("p", "d", "q")]
+
+  cat("Fixed ARIMA order selected on initial training set for",
+      var_dep, ": (", ordre_fixe["p"], ",", ordre_fixe["d"], ",",
+      ordre_fixe["q"], ")\n")
+
+  # ----------------------------------------------------------
+  # STEP 4 — WALK-FORWARD LOOP WITH FIXED ORDER.
+  # At each step, the expanding training window is used to
+  # RE-ESTIMATE THE COEFFICIENTS of an ARIMA(p,d,q) model with
+  # the order fixed in STEP 3 above — auto.arima() is never
+  # called again inside this loop. This is the key methodological
+  # change requested: it tests whether the order chosen on the
+  # initial sample generalises to new data, rather than letting
+  # the order re-adapt at every step, which would blur the
+  # distinction between genuine forecasting and in-sample
+  # re-fitting of the model structure itself.
+  # Arima() (not auto.arima()) is used here, with the order
+  # argument fixed to ordre_fixe.
+  # ----------------------------------------------------------
+
   predictions <- numeric(n_test)
 
   for (i in 1:n_test) {
 
-    nb_observations_vues <- i - 1   # 0 at step 1, 1 at step 2, ...
+    nb_observations_vues <- i - 1
 
-    # Observations of the test period already "seen" before step i
     indices_vus <- seq_len(nb_observations_vues)
     y_vu        <- y_test[indices_vus]
     xreg_vu     <- xreg_test[indices_vus, , drop = FALSE]
 
-    # The expanding training window for this step
     y_fenetre    <- c(y_train, y_vu)
     xreg_fenetre <- rbind(xreg_train, xreg_vu)
 
     modele_arima <- tryCatch(
-      auto.arima(y_fenetre, xreg = xreg_fenetre,
-                 stepwise      = TRUE,
-                 approximation = TRUE,
-                 max.p = 3, max.q = 3, max.d = 1),
+      Arima(y_fenetre, order = as.numeric(ordre_fixe), xreg = xreg_fenetre),
       error = function(e) NULL
     )
 
@@ -3279,27 +3351,21 @@ fit_arimax <- function(df, var_dep, n_train) {
       next
     }
 
-    # One-step-ahead forecast using row i of the test regressors
     ligne_regresseurs_futurs <- matrix(xreg_test[i, ], nrow = 1)
     prevision <- forecast(modele_arima, h = 1,
                           xreg = ligne_regresseurs_futurs)
     predictions[i] <- prevision$mean[1]
   }
 
-  # STEP 4 — Fit one additional model on the initial training
-  # set only (not the walk-forward loop). This single model is
-  # kept purely for reporting purposes later in the document:
-  # the selected ARIMA order, the regression coefficients, and
-  # the residual diagnostics all refer to this training-set-only
-  # model rather than to any of the ~43 models re-estimated
-  # during the walk-forward loop above.
-  modele_sur_entrainement <- auto.arima(y_train, xreg = xreg_train,
-                                        stepwise      = TRUE,
-                                        approximation = TRUE)
+  # STEP 5 — Keep the initial-training-set model for reporting
+  # purposes (order, coefficients, residuals), consistent with
+  # the rest of the document.
+  modele_sur_entrainement <- modele_ordre_initial
 
   list(actual    = y_test,
        predicted = predictions,
-       model     = modele_sur_entrainement)
+       model     = modele_sur_entrainement,
+       ordre_fixe = ordre_fixe)
 }
 
 
@@ -3330,20 +3396,32 @@ metriques_arimax <- rbind(
 )
 ```
 
-ARIMAX turns out to be one of the strongest models tested in this study. It reaches an $R^2$ of 0.821 for Arabica and 0.929 for Robusta, meaning the model captures the vast majority of price movement over both test periods. Beyond the walk-forward loop that produces these out-of-sample forecasts, a separate ARIMAX model is estimated once on the initial training window only, and never updated thereafter. This second model plays no role in the reported performance metrics; it exists solely to provide a single, stable reference point, an order, a set of coefficients, and a set of residuals, that the sections below all refer back to, rather than trying to summarise 43 potentially different models estimated over the course of the walk-forward procedure.
+ARIMAX turns out to be one of the strongest models tested in this study. It reaches an $R^2$ of 0.955 for Arabica and 0.926 for Robusta, meaning the model captures the vast majority of price movement over both test periods. Beyond the walk-forward loop that produces these out-of-sample forecasts, a separate ARIMAX model is estimated once on the initial training window only, and never updated thereafter. This second model plays no role in the reported performance metrics; it exists solely to provide a single, stable reference point, an order, a set of coefficients, and a set of residuals, that the sections below all refer back to, rather than trying to summarise the ~43 coefficient re-estimations carried out over the course of the walk-forward procedure under the fixed order established here.
 
 ### Model Order and Estimation
 
+Beyond the walk-forward loop that produces these out-of-sample forecasts, a separate ARIMAX model is estimated once on the initial training window only, and never updated thereafter. This second model plays no role in the reported performance metrics; it exists solely to provide a single, stable reference point, an order, a set of coefficients, and a set of residuals, that the sections below all refer back to.
+
+Unlike the earlier specification, in which `auto.arima()` was free to re-select the $(p,d,q)$ order at every one of the ~40 walk-forward steps, the order is now selected once on the initial training window, using a widened and exhaustive search ($\max p = \max q = 5$, $\max d = 2$, `stepwise = FALSE`, `approximation = FALSE`), and then held fixed for the remainder of the walk-forward loop: at each step, only the coefficients of that fixed-order model are re-estimated as the training window expands, via `Arima()` rather than `auto.arima()`. This is a genuine generalisation test in a way the earlier specification was not: rather than letting the model structure itself adapt to each new observation, it asks whether a single order chosen from the initial sample continues to fit well as new data arrive.
+
 ```{r arimax_order}
-# Report the ARIMA order selected on the full training set
-# for each series, for methodological transparency.
-cat("Arabica - ARIMA order selected by auto.arima():\n")
+
+cat("Arabica - Fixed ARIMA order (selected on initial training set):\n")
 print(res_arimax_ara$model)
-cat("\nRobusta - ARIMA order selected by auto.arima():\n")
+cat("Fixed order: (", res_arimax_ara$ordre_fixe["p"], ",",
+    res_arimax_ara$ordre_fixe["d"], ",", res_arimax_ara$ordre_fixe["q"], ")\n\n")
+
+cat("Robusta - Fixed ARIMA order (selected on initial training set):\n")
 print(res_arimax_rob$model)
+cat("Fixed order: (", res_arimax_rob$ordre_fixe["p"], ",",
+    res_arimax_rob$ordre_fixe["d"], ",", res_arimax_rob$ordre_fixe["q"], ")\n")
 ```
 
-On the full training set, `auto.arima()` settles on a Regression with ARIMA(1,0,0) errors for Arabica and a Regression with ARIMA(3,0,1) errors for Robusta. Neither model differences the residuals $(d=0)$, which makes sense once you consider what the regression component is already doing: prices and the exogenous predictors trend together over the sample, so the regression absorbs that shared drift on its own, leaving behind a residual that doesn't need further differencing to behave. The AR(1) coefficient of 0.967 for Arabica is a striking number in its own right. It says the residual carries over from one month to the next almost entirely, which lines up with the strong persistence already visible in the descriptive statistics. Robusta's richer ARMA(3,1) structure suggests there is more short-run dynamics to capture in this series, consistent with it being the more volatile of the two.
+On the full training set, the widened search settles on a Regression with ARIMA(2,0,1) errors for Arabica and a Regression with ARIMA(1,0,3) errors for Robusta, replacing the ARIMA(1,0,0) and ARIMA(3,0,1) orders selected under the previous, narrower search. Neither model differences the residuals ($d=0$), for the same reason as before: the regression component absorbs the shared trend between prices and the exogenous predictors, leaving a residual that does not require further differencing.
+
+It is worth being precise about what "initial training window" means in this context. The order is selected using only the first 168 monthly observations for Arabica (2006-06 to the end of the initial training period) and the first 153 for Robusta, the same windows used to initialise the walk-forward loop for every other model in this study. No observation from the test period enters this selection step. The order is therefore optimal for this specific 168- or 153-month sample, not a universally "true" order; had the training window covered a different span, a different order might well have been selected. The walk-forward loop that follows tests whether this order, chosen once and never revisited, continues to fit well as the model is confronted with data it has not seen, rather than allowing the model to re-discover a possibly different order at every step.
+
+Fixing the order rather than letting it re-adapt at every walk-forward step changes the out-of-sample results, and does so asymmetrically across the two varieties. For Arabica, out-of-sample $R^2$ rises sharply, from 0.821 under the re-adaptive specification to 0.955 once the order is fixed. This is consistent with the previous specification occasionally selecting an unstable or under-specified order on the smaller training windows encountered early in the walk-forward loop, a source of noise that fixing the order via a single, thorough search on the full initial sample removes. For Robusta, the effect is far more modest, $R^2$ moves from 0.929 to 0.926, essentially unchanged, and the newly selected ARIMA(1,0,3) structure, while less autoregressive than the earlier ARIMA(3,0,1), still captures a comparable degree of short-run dynamics through its richer moving-average component.
 
 ### Regression Coefficients
 
@@ -3495,15 +3573,15 @@ extraire_coefs_arimax(
 )
 ```
 
-For Arabica, only two regressors clear conventional significance thresholds: Sugar No.11 $(p<0.001)$ and WTI $(p<0.01)$. The Sugar coefficient of 1.022 means a one-unit rise in the Sugar No.11 price comes with roughly a USD 1.02/lb increase in Arabica futures, and the positive WTI coefficient fits the energy cost story already discussed elsewhere in this document. Everything else, including the USDA fundamentals, the climate indices and the COT position, is individually insignificant here even though several of these variables contribute meaningfully to the machine learning models' forecasts. That apparent contradiction is exactly what severe multicollinearity produces: a group of correlated predictors can carry real, usable information collectively while none of them stands out individually in a linear regression.
+For Arabica, four regressors now clear conventional significance thresholds under the fixed-order specification, twice as many as under the previous re-adaptive ARIMAX. Sugar No.11 ($p=0.0021$) and WTI ($p<0.001$) remain significant as before, with coefficients close to their earlier values: the Sugar coefficient of 1.020 still implies that a one-unit rise in the Sugar No.11 price comes with roughly a USD 1.02/lb increase in Arabica futures, and the positive WTI coefficient continues to fit the energy cost story discussed in this thesis. Two variables that were previously insignificant now emerge clearly: the Federal Funds Rate ($p<0.001$), with a coefficient of −0.058, matches the theoretically expected negative sign, tighter monetary policy weighing on commodity prices through a stronger dollar and reduced risk appetite; and COT net Managed Money ($p=0.025$), positive as expected, reinforcing the role of speculative positioning already highlighted in the variable importance analysis. The remaining ten variables, including all four USDA fundamentals, stay individually insignificant, consistent with the multicollinearity already documented in the VIF table.
 
-Robusta tells a similar story with a different cast of significant variables. CPI $(p<0.01)$ and WTI $(p<0.05)$ come through as significant, underlining how much macroeconomic conditions matter for this series. COT net Managed Money is highly significant too $(p<0.001)$, with a coefficient of 0.003, small on a per-contract basis but economically meaningful once you scale it up to the tens of thousands of contracts these funds typically hold. As with Arabica, the USDA fundamentals stay insignificant, for the same collinearity reasons.
+The Robusta table tells a broadly similar story to before, with one addition. CPI ($p=0.0014$) and WTI ($p=0.0235$) come through as significant, and COT net Managed Money remains highly significant ($p<0.001$) with a coefficient of 0.0029, confirming that speculative positioning matters for Robusta as well as Arabica. DXY now approaches significance at the 10% level ($p=0.0905$), with a coefficient of −3.937 consistent with the expected negative relationship between dollar strength and coffee prices, though it stops short of the conventional 5% threshold. As with Arabica, the USDA fundamentals stay insignificant, for the same collinearity reasons discussed throughout this section.
 
 ### Multicollinearity Diagnostics
 
-Before taking those coefficients at face value, it's worth asking how much the model can actually tell individual predictors apart given how correlated they are with each other.
+More coefficients reach conventional significance thresholds here than under the previous specification, but the ten predictors that remain insignificant, including all four USDA fundamentals, are still worth scrutinising before drawing conclusions from their coefficients. Before taking those coefficients at face value, it's worth asking how much the model can actually tell individual predictors apart given how correlated they are with each other.
 
-*This chunk computes the Variance Inflation Factor (VIF) for each of the 14 exogenous regressors included in the ARIMAX model, separately for Arabica and Robusta.*
+*This chunk computes the Variance Inflation Factor (VIF) for each of the 14 exogenous regressors included in the ARIMAX model, separately for Arabica and Robusta. VIF values are classified using the conventional thresholds of $VIF ≥ 10$ as severe multicollinearity, $5 ≤ VIF < 10$ as moderate, and $VIF < 5$ as acceptable, reported in the Diagnostic column of each table below.*
 
 ```{r arimax_vif, message=FALSE, warning=FALSE}
 
@@ -3716,9 +3794,9 @@ pacf(residuals(res_arimax_rob$model),
 par(mfrow = c(1, 1))
 ```
 
-The two series don't behave the same way here. Robusta is close to clean, with only minor exceedances at lags 1 and 15 in the ACF and a single spike at lag 15 in the PACF, nothing that points to a systematic pattern the ARIMA(3,0,1) structure missed.
+Arabica's ACF shows no significant spike beyond lag 0, and its PACF shows a single, modest exceedance at lag 8, just above the confidence band. Robusta remains close to clean, with a single exceedance at lag 15 in both the ACF and PACF, nothing that points to a systematic pattern the ARIMA(1,0,3) structure has failed to capture.
 
-Arabica is a different story. The ACF shows significant spikes at lags 1, 2, 5, 6, 16 and 24, and the PACF at lags 1, 5, 8 and 10, which means the ARIMA(1,0,0) structure isn't fully capturing this series' autocorrelation. A higher-order specification, adding AR terms around lags 5 or 6, would probably reduce this residual dependence, but the walk-forward loop's computational budget capped the search at $p=3$. This is acknowledged as a direction for future refinement rather than something that undermines the out-of-sample result: Arabica still reaches an $R^2$ of 0.821 under walk-forward validation despite this imperfection.
+This clean residual profile is consistent with the richer ARIMA(2,0,1) structure selected for Arabica on the full training set: with two autoregressive terms and a moving-average term available, the model has more flexibility to absorb short-run dynamics than a simpler specification would, which lines up with the strong out-of-sample $R^2$ documented earlier in this section.
 
 *This chunk formally tests the stationarity of the ARIMAX residuals using the same ADF/KPSS procedure applied to the raw series in the Stationarity Tests section, reusing `tester_serie()` directly. This complements the ACF/PACF diagnostics above: autocorrelation and stationarity are related but distinct properties, and confirming both gives a fuller picture of whether the $d=0$ specification is well supported.*
 
@@ -3781,11 +3859,11 @@ kable(resultats_residus,
   row_spec(0, bold = TRUE, background = "#4a4a4a", color = "white")
 ```
 
-The results mostly back up the $d=0$ specification, though not with the same confidence for both varieties. Robusta is unambiguous: the ADF rejects the unit root ($p = 0.010$) and the KPSS doesn't reject stationarity, confirming the ARIMA(3,0,1) structure is operating on a genuinely stationary residual, which fits the clean ACF/PACF result above.
-
-Arabica sits closer to the edge. The KPSS doesn't reject stationarity, but the ADF result lands right at the conventional 5% threshold ($p = 0.054$), and `R`'s own warning flags that the true p-value is smaller than what's printed, so this is a genuinely borderline case rather than a clean pass or fail. It's the same kind of ambiguity already seen for several raw series in the main stationarity analysis. Put together with the residual autocorrelation already noted above, the picture for Arabica is consistent: the $d=0$ specification is reasonable and the residuals are close to stationary, but the model isn't perfectly specified for this series, a limitation already on the table rather than a new concern.
+The results now back up the $d = 0$ specification unambiguously for both varieties, with the ADF and KPSS tests in full agreement. For Arabica, the ADF rejects the unit root ($p = 0.01$) and the KPSS fails to reject stationarity ($p = 0.1$), a clear improvement over the ARIMA(1,0,0) specification, under which the ADF result sat right at the conventional 5% threshold ($p = 0.054$). Robusta shows the same clean agreement between the two tests (ADF $p = 0.01$, KPSS $p = 0.1$), consistent with the already clean ACF/PACF profile discussed above. Note that the KPSS p-value of 0.1 for both series reflects the upper bound reported by the test's reference table rather than an exact value, so the true p-value may be somewhat higher; this does not affect the conclusion, since the null of stationarity is comfortably not rejected either way.
 
 ## Random Forest
+
+Random Forest builds an ensemble of decision trees, each grown on a bootstrap sample of the training data and each considering only a random subset of predictors at every split. Individual trees are typically noisy and prone to overfitting their own bootstrap sample, but averaging predictions across hundreds of such trees cancels out much of that noise, producing a more stable and often more accurate forecast than any single tree could achieve on its own. Unlike MLR and ARIMAX, Random Forest makes no assumption about linearity between predictors and the target, and it can capture non-linear relationships and interactions among the 14 exogenous variables without these needing to be specified explicitly.
 
 *This chunk estimates the Random Forest model for both series. The implementation follows the same walk-forward structure as MLR and ARIMAX above, with two differences specific to this model family: all variables, including the dependent variable, are Min-Max scaled to $[0, 1]$ before estimation, and the forest is grown with 500 trees at each step with importance recording enabled. The variable importance scores from the final iteration of the loop are retained and used in the importance plot chunk later in the document.*
 
@@ -3854,6 +3932,7 @@ fit_rf <- function(df, var_dep, n_train) {
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
 
+    set.seed(42)
     foret <- randomForest(formule, data = fenetre_entrainement,
                           ntree = 500, importance = TRUE)
 
@@ -3996,6 +4075,7 @@ fit_rf_tuned <- function(df, var_dep, n_train,
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
 
+    set.seed(42)
     foret <- randomForest(formule, data = fenetre_entrainement,
                           ntree    = ntree,
                           nodesize = nodesize,
@@ -4158,15 +4238,15 @@ df_rf_tuning %>%
             bold = FALSE, italic = TRUE, color = "grey40")
 ```
 
-Across all three levers, the results tell a consistent story: the number of trees barely matters, while the two complexity controls, `nodesize` and `maxnodes`, matter a great deal, and in the same direction. Allowing individual trees to grow more complex, that is, more freely, improves performance up to a point, but constraining them too aggressively hurts substantially.
+Across all three levers, the results tell a broadly similar story to the previous tuning round: the number of trees barely matters, while the two complexity controls, `nodesize` and `maxnodes`, matter a great deal, and in the same direction. Allowing individual trees to grow more complex, that is, more freely, improves performance up to a point, but constraining them too aggressively hurts substantially. Fixing a random seed for reproducibility, however, changes which variety is more sensitive to these constraints, reversing the pattern reported in an earlier, unseeded run of this comparison.
 
-**Number of trees (`ntree`)**. Varying `ntree` between 100 and 1000 changes almost nothing. Arabica moves within a narrow band of $R^2$ = 0.810 to 0.814, and Robusta within 0.683 to 0.698, with no clear monotonic direction in either case. This is the expected behaviour for a Random Forest: each tree is grown independently on a bootstrap sample, and averaging over more trees mainly reduces the variance of the ensemble's prediction rather than changing what it has learned. Once enough trees are grown to average out the noise from individual bootstrap samples, roughly 100 in this case, adding more brings diminishing and eventually negligible returns. The baseline choice of 500 trees is comfortably within this plateau for both varieties.
+**Number of trees (`ntree`)**. Varying `ntree` between 100 and 1000 changes almost nothing. Arabica moves within a narrow band of $R^2$ = 0.803 to 0.807, and Robusta within 0.692 to 0.696, with no clear monotonic direction in either case. This is the expected behaviour for a Random Forest: each tree is grown independently on a bootstrap sample, and averaging over more trees mainly reduces the variance of the ensemble's prediction rather than changing what it has learned. Once enough trees are grown to average out the noise from individual bootstrap samples, roughly 100 in this case, adding more brings diminishing and eventually negligible returns. The baseline choice of 500 trees ($R^2$ = 0.815 for Arabica, 0.676 for Robusta) sits comfortably within, or slightly above, this plateau for both varieties.
 
-**Minimum terminal node size (`nodesize`)**. This is where the two varieties start to diverge, though the direction is the same for both. Smaller values, which allow trees to split further and grow deeper, improve performance: `nodesize = 1` reaches $R^2$ = 0.826 for Arabica and 0.717 for Robusta, both above their respective baselines (0.811 and 0.695). Larger values degrade performance steadily: at `nodesize = 20`, Arabica falls to 0.725 and Robusta falls further still, to 0.595, a full 10 points below its baseline. Robusta is consistently more sensitive to this constraint than Arabica across every value tested, which fits the pattern already established elsewhere in this study: Robusta's shorter, more volatile training sample benefits less from an artificially simplified tree structure, since restricting node size caps the model's ability to capture the finer-grained relationships this variety's price dynamics 
+**Minimum terminal node size (`nodesize`)**. This is where the two varieties diverge, and here the direction of that divergence has flipped compared to the earlier, unseeded comparison. Smaller values, which allow trees to split further and grow deeper, still improve performance for both varieties: `nodesize = 1` reaches $R^2$ = 0.824 for Arabica and 0.732 for Robusta, both above their respective baselines. But the size of that improvement is now far more pronounced for Robusta (+0.057) than for Arabica (+0.008), the opposite of what the earlier run suggested. Larger values degrade performance steadily for both: at `nodesize = 20`, Arabica falls to 0.715, a drop of 0.101 from baseline, while Robusta falls to 0.587, a drop of 0.089. Fixing `nodesize` and `maxnodes` too aggressively hurts both varieties, and that holds across both runs. What doesn't hold is which variety is more exposed: an earlier, unseeded run pointed to Robusta, while the seeded run above points to Arabica. That ranking should be read as illustrative rather than structural, unlike the size of the effect itself, which is robust either way.
 
-**Maximum number of terminal nodes (`maxnodes`)**. The same qualitative pattern appears, and here it is far more dramatic at the aggressive end. Capping trees at only 10 terminal nodes is clearly too restrictive: $R^2$ falls to 0.695 for Arabica and to 0.577 for Robusta, the single worst result in the entire comparison and nearly 12 points below the Robusta baseline. Relaxing the cap to 50 or 100 nodes brings both varieties back to within a hair of the baseline (0.807-0.809 for Arabica, 0.69-0.695 for Robusta), suggesting that the unconstrained baseline was already close to the complexity these trees actually need, and that only a severe artificial ceiling meaningfully hurts performance.
+**Maximum number of terminal nodes (`maxnodes`)**. The same qualitative pattern appears, and again the direction of the earlier divergence has reversed. Capping trees at only 10 terminal nodes is clearly too restrictive for both varieties: $R^2$ falls to 0.699 for Arabica, a drop of 0.117 from baseline and the single largest degradation observed anywhere in this table, and to 0.593 for Robusta, a drop of 0.083. Relaxing the cap to 50 or 100 nodes brings both varieties back to within a hair of the baseline (0.804 for Arabica, 0.694–0.695 for Robusta), confirming, as before, that the unconstrained baseline was already close to the complexity these trees actually need, and that only a severe artificial ceiling meaningfully hurts performance.
 
-**Taken together**, these three sweeps point to the same conclusion from three different angles: the Random Forest's baseline configuration, 500 trees with no explicit complexity constraint, was already close to optimal, or at least safely on the right side of the complexity/performance trade-off. The only genuine improvements found, `nodesize = 1` for both varieties, are modest (roughly +0.015 for Arabica, +0.022 for Robusta) and come at the cost of growing near-maximal trees, which increases the risk of overfitting individual bootstrap samples even if the walk-forward test performance does not yet show it. The clearest and most robust finding across the whole table is the negative one: constraining tree complexity too aggressively, whether through a small `maxnodes` or a large `nodesize`, is reliably harmful, and more so for Robusta than for Arabica.
+**Taken together**, these three sweeps point to the same broad conclusion as before, from three different angles: the Random Forest's baseline configuration, 500 trees with no explicit complexity constraint, was already close to optimal, or at least safely on the right side of the complexity/performance trade-off. The genuine improvement found at `nodesize = 1` is modest for Arabica (+0.008) but considerably more meaningful for Robusta (+0.057, the largest gain observed anywhere in this table), and comes at the cost of growing near-maximal trees, which increases the risk of overfitting individual bootstrap samples even if the walk-forward test performance does not yet show it. The clearest and most robust finding across the whole table remains the negative one: constraining tree complexity too aggressively, whether through a small `maxnodes` or a large `nodesize`, is reliably harmful to both varieties, and now more so for Arabica than for Robusta once results are computed under a fixed random seed, the reverse of what an earlier, unseeded run of this same comparison had suggested.
 
 ### Random Forest: Single-Tree Pruning with CART
 
@@ -4243,6 +4323,8 @@ fit_cart_pruned <- function(df, var_dep, n_train) {
     nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+    
+    set.seed(42)
 
     # Grow a deliberately oversized tree. minsplit = 10 keeps the
     # tree from splitting nodes with fewer than 10 observations,
@@ -4407,13 +4489,159 @@ afficher_cptable(res_cart_rob, "#2E8B57",
                  "Cost-complexity table — Robusta (final walk-forward iteration)")
 ```
 
-The comparison leaves little room for ambiguity. A single pruned CART tree falls well short of the Random Forest for both varieties: $R^2$ drops from 0.811 to 0.672 for Arabica, a loss of 0.139, and from 0.695 to 0.395 for Robusta, a loss of exactly 0.300. Robusta is hit noticeably harder, consistent with the pattern already seen throughout this study, where its shorter and more volatile sample tends to punish any simplification of the model more severely than Arabica does.
+The comparison leaves little room for ambiguity. A single pruned CART tree falls well short of the Random Forest for both varieties: $R^2$ drops from 0.815 to 0.633 for Arabica, a loss of 0.183, and from 0.676 to 0.315 for Robusta, a loss of 0.361. Robusta is hit noticeably harder, consistent with the pattern already seen throughout this thesis, where its shorter and more volatile sample tends to punish any simplification of the model more severely than Arabica does.
 
 This gap is exactly what the difference between CART and Random Forest predicts. A single tree, however carefully pruned, has to commit to one specific sequence of splits chosen from one training sample. The Random Forest instead averages over hundreds of trees, each grown on its own bootstrap sample and each considering only a random subset of predictors at every split. Individually, many of these trees are cruder or noisier than a single well-pruned CART tree would be, but averaging across them cancels out a good part of that noise, in a way that no amount of pruning can replicate within a single tree. The one-standard-error rule applied here is, if anything, a fairly disciplined pruning choice, and it still cannot close this gap.
 
-The cost-complexity tables make the pruning decision itself visible rather than just asserted. For Arabica, the cross-validated error drops sharply over the first few splits, from 1.010 with no splits at all to 0.307 at 5 splits, then keeps improving more slowly before the one-standard-error rule settles on 13 splits (cp = 0.00604, cross-validated error 0.201), rather than the lower-error, larger trees available further down the table. For Robusta, the same logic applies with a smaller tree: the rule selects 9 splits (cp = 0.01817, cross-validated error 0.333), even though slightly larger trees a few rows down achieve marginally lower cross-validated error. In both cases, the rule is doing exactly what it is designed to do: trading a small, statistically insignificant amount of cross-validated accuracy for a simpler, more conservative tree, rather than chasing the single lowest error value in the table.
+The cost-complexity tables make the pruning decision itself visible rather than just asserted. For Arabica, the cross-validated error drops sharply over the first few splits, from 1.009 with no splits at all to 0.296 at 5 splits, then keeps improving more slowly before the one-standard-error rule settles on 5 splits (cp = 0.01760, cross-validated error 0.296, standard error 0.047), rather than the lower-error, larger trees available further down the table (0.273 at 8 splits, for example). For Robusta, the same logic applies with a larger tree: the rule selects 8 splits (cp = 0.02618, cross-validated error 0.369, standard error 0.051), even though slightly larger trees a few rows down achieve marginally lower cross-validated error (0.361 at 9 splits). In both cases, the rule is doing exactly what it is designed to do: trading a small, statistically insignificant amount of cross-validated accuracy for a simpler, more conservative tree, rather than chasing the single lowest error value in the table.
 
 Taken together, this section answers the `cp` question directly rather than leaving it as an unused parameter. `cp` governs a real and useful mechanism, but one that belongs to a single tree deliberately grown large and pruned back through cross-validation. A Random Forest does not need it, and this comparison shows why: even a properly pruned single tree, chosen through the same disciplined one-standard-error logic used throughout classical CART, still forecasts noticeably worse than an ensemble of unpruned trees for both coffee varieties.
+
+This does not mean pruning is irrelevant to Random Forest altogether, only that a single pruned tree cannot substitute for the ensemble itself. The next section tests a different question: whether pruning individual trees within the forest, rather than replacing the forest with a single tree, changes anything.
+
+### Random Forest: Cost-Complexity Pruning via scikit-learn
+
+The single-tree comparison above showed why `randomForest` in R has no `cp` argument: cost-complexity pruning belongs to a single CART tree, not to an ensemble of unpruned, bootstrap-grown trees. It would be a mistake, however, to conclude from this that no Random Forest implementation supports cost-complexity pruning at all. scikit-learn's `RandomForestRegressor`, unlike R's `randomForest`, exposes a `ccp_alpha` parameter that applies minimal cost-complexity pruning to every individual tree in the forest after it is grown, using the same cost-complexity criterion as a standalone CART tree.[^ccp-sklearn] This section tests that parameter directly, using the same walk-forward protocol and predictor set as the baseline Random Forest above, to establish empirically whether pruning individual trees within the forest changes out-of-sample performance.
+
+[^ccp-sklearn]: scikit-learn developers. *Minimal Cost-Complexity Pruning*. scikit-learn User Guide. https://scikit-learn.org/stable/modules/tree.html#minimal-cost-complexity-pruning
+
+*This chunk calls scikit-learn's `RandomForestRegressor` from R via `reticulate`, testing three values of `ccp_alpha` (0, the unpruned default; 0.001; 0.01) against the unpruned baseline already estimated above. The walk-forward loop mirrors the structure of `fit_rf()`: at each step, a fresh forest of 500 trees is grown on the expanding training window, with `ccp_alpha` fixed across all trees in the forest for that specification. Reproducibility is ensured via `random_state = 42`, scikit-learn's equivalent of R's `set.seed()`.*
+
+```{r rf_ccp_alpha_setup, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# RANDOM FOREST — COST-COMPLEXITY PRUNING VIA SCIKIT-LEARN
+# randomForest in R has no cp/ccp_alpha equivalent. scikit-learn's
+# RandomForestRegressor does: ccp_alpha applies minimal cost-
+# complexity pruning to every tree in the forest individually,
+# using the same pruning criterion as a standalone CART tree.
+# This directly tests the claim raised during supervision that
+# there is no fundamental incompatibility between cost-complexity
+# pruning and Random Forest — only a difference in what individual
+# packages happen to implement.
+# random_state = 42L is scikit-learn's equivalent of R's set.seed(),
+# ensuring the bootstrap samples and per-split variable subsets are
+# reproducible across runs.
+# ----------------------------------------------------------
+
+library(reticulate)
+
+sklearn_ensemble <- import("sklearn.ensemble")
+
+
+fit_rf_sklearn_ccp <- function(df, var_dep, n_train, ccp_alpha = 0) {
+
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder         <- c(var_dep, vars_exo_disponibles)
+  df_modele             <- df[, vars_a_garder]
+
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  predictions <- numeric(n_test)
+
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues  <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    X_train <- as.matrix(fenetre_entrainement[, vars_exo_disponibles])
+    y_train <- fenetre_entrainement[[var_dep]]
+
+    foret_sklearn <- sklearn_ensemble$RandomForestRegressor(
+      n_estimators = 500L,
+      ccp_alpha    = ccp_alpha,
+      random_state = 42L
+    )
+    foret_sklearn$fit(X_train, y_train)
+
+    ligne_a_predire <- as.matrix(donnees_test[i, vars_exo_disponibles,
+                                               drop = FALSE])
+    predictions[i]  <- as.numeric(foret_sklearn$predict(ligne_a_predire))
+  }
+
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
+}
+```
+
+*This chunk runs the scikit-learn Random Forest at `ccp_alpha` = 0 (unpruned, for a direct like-for-like comparison against R's `randomForest`), 0.001 and 0.01, for both coffee varieties.*
+
+```{r rf_ccp_alpha_run, message=FALSE, warning=FALSE, results='hide'}
+
+configs_ccp_alpha <- list(
+  "ccp_alpha = 0 (unpruned)" = 0,
+  "ccp_alpha = 0.001"        = 0.001,
+  "ccp_alpha = 0.01"         = 0.01
+)
+
+resultats_ccp_ara <- list()
+resultats_ccp_rob <- list()
+
+for (nom_config in names(configs_ccp_alpha)) {
+
+  cat("Running", nom_config, "- Arabica...\n")
+  resultats_ccp_ara[[nom_config]] <- fit_rf_sklearn_ccp(
+    df_arabica_levels, "arabica_price", n_train_ara_lev,
+    ccp_alpha = configs_ccp_alpha[[nom_config]])
+
+  cat("Running", nom_config, "- Robusta...\n")
+  resultats_ccp_rob[[nom_config]] <- fit_rf_sklearn_ccp(
+    df_robusta_levels, "robusta_price", n_train_rob_lev,
+    ccp_alpha = configs_ccp_alpha[[nom_config]])
+}
+```
+
+*This chunk compiles the scikit-learn results alongside the R `randomForest` baseline already estimated earlier in this section (`res_rf_ara`, `res_rf_rob`), grouped by variety with `pack_rows()`.*
+
+```{r rf_ccp_alpha_table, message=FALSE, warning=FALSE}
+
+construire_bloc_ccp <- function(nom_serie, res_baseline_r, res_ccp) {
+  rbind(
+    data.frame(Specification = "randomForest (R), unpruned baseline",
+               calculer_metriques(res_baseline_r$actual, res_baseline_r$predicted)),
+    do.call(rbind, lapply(names(res_ccp), function(nom) {
+      data.frame(Specification = paste0("scikit-learn RandomForestRegressor, ", nom),
+                 calculer_metriques(res_ccp[[nom]]$actual, res_ccp[[nom]]$predicted))
+    }))
+  ) %>% mutate(Series = nom_serie, .after = Specification)
+}
+
+df_ccp_comparison <- rbind(
+  construire_bloc_ccp("Arabica", res_rf_ara, resultats_ccp_ara),
+  construire_bloc_ccp("Robusta", res_rf_rob, resultats_ccp_rob)
+)
+
+df_ccp_comparison %>%
+  select(Specification, R2, MSE, MAE) %>%
+  kable(caption   = "Random Forest — R baseline vs scikit-learn with cost-complexity pruning (ccp_alpha)",
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Specification", "R²", "MSE", "MAE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = TRUE) %>%
+  row_spec(4, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 4,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 5, 8,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec")
+```
+
+The results settle the question of compatibility directly, but not in the direction that might have been expected. `ccp_alpha` works exactly as documented: scikit-learn's unpruned specification ($ccp\_alpha = 0$) reaches $R^2$ = 0.811 for Arabica and 0.680 for Robusta, closely matching R's `randomForest` baseline (0.815 and 0.676 respectively), the small remaining gap reflecting implementation differences between the two libraries rather than any issue with the pruning mechanism itself. There is, in other words, no fundamental incompatibility between cost-complexity pruning and Random Forest: the parameter exists, runs without error, and produces a sensible unpruned baseline when set to zero.
+
+What the comparison also shows, however, is that using it at all is actively harmful here. Even a modest pruning strength of $ccp\_alpha = 0.001$ collapses performance to $R^2$ = 0.639 for Arabica and 0.485 for Robusta, and $ccp\_alpha = 0.01$ is catastrophic, driving $R^2$ down to 0.085 for Arabica and to $-0.077$ for Robusta. A negative $R^2$ carries a specific meaning: it is not simply a low score, but an indication that the model performs worse than the naive benchmark of predicting the test period's mean price at every step. At $ccp\_alpha = 0.01$, the pruning penalty is severe enough to strip most of the forest's individual trees down to only a handful of splits, degrading the ensemble to the point where it no longer meaningfully uses the 14 exogenous predictors at all. The degradation is monotonic and severe well before reaching what would be considered a mild pruning strength in a single-tree context.
+
+This pattern has a straightforward explanation rooted in what makes a Random Forest work in the first place. The ensemble's accuracy comes from averaging over many individually noisy, high-variance trees, each grown on its own bootstrap sample; the averaging is what cancels the noise, not the quality of any single tree. Applying the same `ccp_alpha` penalty to every tree in the forest constrains all of them toward simpler, more biased structures in a correlated way, which shrinks the very diversity across trees that the averaging step depends on to cancel noise in the first place. Pruning helps a single CART tree precisely because that tree has no ensemble to fall back on and must generalise on its own; a Random Forest does not share that problem, and imposing the same discipline on every tree removes a source of beneficial variance rather than a source of harmful overfitting.
+
+Taken together with the single-tree comparison earlier in this section, the picture is now complete on both fronts. A single pruned tree cannot replace the forest, and pruning the trees within the forest does not improve it either; it degrades it, and severely so at even modest pruning strengths. The two mechanisms are not incompatible in a technical sense: `ccp_alpha` runs without issue inside a Random Forest and produces a reasonable baseline when disabled. But they address different problems. Cost-complexity pruning exists to keep a single tree, which has no ensemble to average its errors away, from overfitting its training sample. A Random Forest already solves that problem through averaging across many bootstrap-grown trees, so constraining each individual tree toward simplicity removes some of the diversity that averaging relies on, without addressing an overfitting risk the ensemble did not have in the first place.
 
 ## XGBoost
 
@@ -7413,6 +7641,7 @@ fit_rf_generique <- function(df, var_dep, vars_exo_vec, n_train) {
     nb_lignes_test_vues  <- i - 1
     lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
     fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+    set.seed(42)
     foret <- randomForest(formule, data = fenetre_entrainement,
                           ntree = 500, importance = TRUE)
     predictions[i] <- predict(foret, newdata = donnees_test[i, ])
