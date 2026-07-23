@@ -27,12 +27,20 @@ This section documents the construction of the monthly dataset used throughout t
 *This chunk initialises the working environment for the entire pipeline. All raw input data file paths and global constants are defined here and referenced in every subsequent chunk. Output files produced later in the pipeline, including the climate indices and the final assembled datasets, are written to the shared `PATH_OUTPUT` directory defined here, although their individual filenames are set locally in the chunk that creates each file rather than centralised here. Constructing all paths relative to BASE_PATH means that relocating the data folder requires editing a single line.*
 
 ```{r setup, message=FALSE, warning=FALSE}
+
+# Force reticulate to use the r-tensorflow virtual environment
+# (Python 3.11) instead of the default system Python (3.13,
+# which TensorFlow does not yet support). Must be set before
+# any package below (e.g. keras3) triggers Python initialisation.
+
+Sys.setenv(RETICULATE_PYTHON = "C:/Users/Mohamed/Documents/.virtualenvs/r-tensorflow/Scripts/python.exe")
+
 packages_requis <- c(
   "readxl", "dplyr", "tidyr", "lubridate", "zoo", "readr",
   "ggplot2", "corrplot", "tseries", "urca", "forecast",
   "scales", "gridExtra", "knitr", "kableExtra", "moments",
   "ggrepel", "randomForest", "xgboost", "e1071", "nnet",
-  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS", "glmnet", "rpart", "reticulate"
+  "Metrics", "tibble", "ggh4x", "car", "broom", "tidytext", "neuralnet", "RSNNS", "glmnet", "rpart", "reticulate", "keras3"
 )
 for (pkg in packages_requis) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -40,7 +48,6 @@ for (pkg in packages_requis) {
   }
 }
 invisible(lapply(packages_requis, library, character.only = TRUE))
-
 
 # ----------------------------------------------------------
 # ROOT AND SUBDIRECTORY PATHS
@@ -2910,7 +2917,7 @@ The Arabica results are largely encouraging. COT net MM stands out as the strong
 
 The remaining variables are individually insignificant, no longer surprising given what the VIF table shows. The three sign inconsistencies, CPI, Production and Exports, are all insignificant and almost certainly reflect multicollinearity rather than any genuine reversal of economic logic. A negative CPI coefficient sitting next to a VIF of 36 is not telling us that inflation depresses coffee prices; it is telling us that OLS cannot separate CPI from the other trending variables it is tangled up with. This is the more common manifestation of collinearity, inflated standard errors that leave a coefficient too imprecisely estimated for its sign to mean anything. The Robusta table below shows a second, less intuitive manifestation of the same underlying problem.
 
-The Robusta table is harder to read. WTI, Sugar and Consumption are significant with the expected signs, and COT net MM is again positive and significant, which is reassuring. But four other significant coefficients point in the wrong direction. CPI is negative and significant, DXY is positive and significant, Cocoa is negative and significant, and Ending stocks is positive and significant where inventory theory would predict the opposite. Unlike the Arabica reversals, these are not simply imprecise estimates: they are statistically significant, which means the explanation cannot be the same inflated-variance story as before. The most likely mechanism instead is a suppression effect. When regressors trend together as strongly as CPI, Production and Consumption do here, the OLS coefficient on any one of them no longer reflects its raw association with price; it reflects only the residual variation left in that variable after netting out what it shares with the others. That residual can point in a direction quite different from the variable's own raw relationship with price, and because this residual variation can still be estimated with reasonable precision, the resulting coefficient can remain statistically significant even as its sign runs counter to intuition. With a VIF above 20 for CPI and only 153 training observations, this is exactly the setting where such reversals are most likely to appear, and the resulting signs should not be read as structural parameters.
+The Robusta table is harder to read. WTI, Sugar and Consumption are significant with the expected signs, and COT net MM is again positive and significant, which is reassuring. But four other significant coefficients point in the wrong direction. CPI is negative and significant, DXY is positive and significant, Cocoa is negative and significant, and Ending stocks is positive and significant where inventory theory would predict the opposite. Unlike the Arabica reversals, these are not simply imprecise estimates: they are statistically significant, which means the explanation cannot be the same inflated-variance story as before. The most likely mechanism instead is a suppression effect. When regressors trend together as strongly as CPI, Production and Consumption do here, the OLS coefficient on any one of them no longer reflects its raw association with price; it reflects only the residual variation left in that variable after netting out what it shares with the others. That residual can point in a direction quite different from the variable's own raw relationship with price, and because this residual variation can still be estimated with reasonable precision, the resulting coefficient can remain statistically significant even as its sign runs counter to intuition. With a VIF above 20 for CPI and only 153 training observations, this is exactly the setting where such reversals may most likely to appear, and the resulting signs should not be read as structural parameters.
 
 What both tables are really saying, when read together, is that MLR is not the right tool for this predictor set. Not because the variables are uninformative, but because OLS needs them to be separable, and they are not. The machine learning models that follow are better equipped for exactly this situation, since they do not need to isolate individual effects to produce accurate forecasts.
 
@@ -5275,6 +5282,8 @@ The SVM with a radial basis function kernel delivers solid out-of-sample perform
 
 ## Artificial Neural Network (ANN)
 
+An Artificial Neural Network learns a potentially complex, non-linear mapping between the 14 exogenous predictors and the target price through one or more hidden layers of interconnected neurons, each applying a weighted transformation to its inputs before passing the result forward. Unlike Random Forest, which builds this flexibility through an ensemble of simple decision rules, the ANN concentrates it into a single differentiable function whose weights are learned by gradient-based optimisation. This flexibility comes at a cost specific to this dataset: with only a few hundred monthly observations and a comparatively high ratio of parameters to observations, the network is more prone to overfitting than the tree-based models unless it is carefully regularised, a tension that runs through much of this section.
+
 The baseline ANN tuning used a single validation window and only searched over the number of hidden neurons, with no regularisation at all. This section improves on both fronts: the same three-split time series cross-validation logic is applied, and the search now includes the `decay` parameter, which controls L2 regularisation. Adding decay is particularly important here given the low observations-to-parameters ratio of the network, which makes overfitting a genuine concern.
 
 *This chunk selects the optimal number of hidden neurons and L2 regularisation strength for the ANN using the same three-split time series cross-validation procedure applied to XGBoost and SVM. For each of the 24 combinations of size and decay, the model is trained and evaluated on three chronological slices of the training window, using 60%, 70% and 80% of the data as training sets respectively, with the following 20% as validation in each case. The average validation MSE across the three evaluations is used to select the best combination, which is then passed directly to the estimation chunk below.*
@@ -5412,9 +5421,79 @@ cat("ANN - Robusta selected: size =", tuning_ann_rob$size,
 
 The tuning procedure selects `size = 2` and `decay = 0.1` for Arabica, and `size = 2` and `decay = 0.001` for Robusta. Both series converge to the smallest architecture tested, confirming that a very compact network is preferable to a larger one given the limited training sample. The difference in decay reflects the distinct dynamics of each series: Arabica benefits from strong regularisation to prevent the network from fitting noise, while Robusta requires only light regularisation.
 
-With the hyperparameters now selected, the ANN is estimated under the full walk-forward protocol. Both series use a two-neuron hidden layer, with `decay = 0.1` for Arabica and `decay = 0.001` for Robusta.
+*This chunk extracts, from the 24-combination grid already computed during hyperparameter tuning above, only the six rows corresponding to the decay value ultimately selected for each variety. This isolates the effect of the number of hidden neurons alone, holding regularisation fixed at its optimal level, without re-running any additional cross-validation.*
 
-*This chunk estimates the ANN model for both series using the walk-forward expanding window protocol. The size and decay hyperparameters are drawn from the tuning results above, separately for each coffee variety. At each step of the walk-forward loop, the network is reinitialised and retrained from scratch on all observations available up to that point, and a single one-step-ahead forecast is generated for the next unseen observation. L2 regularisation is applied via the decay parameter to reduce overfitting risk on the small training samples available for each series.*
+```{r ann_neuron_count, message=FALSE, warning=FALSE}
+
+# ----------------------------------------------------------
+# NUMBER OF HIDDEN NEURONS — ISOLATED FROM THE TUNING GRID
+# tuning_ann_ara$grille and tuning_ann_rob$grille already contain
+# all 24 size x decay combinations tested during hyperparameter
+# tuning above, with their cross-validated MSE. This chunk filters
+# each grid down to the six rows at the decay value ultimately
+# selected for that variety, so the resulting table shows how
+# validation error changes with the number of neurons alone.
+# ----------------------------------------------------------
+
+df_neurones_ara <- tuning_ann_ara$grille %>%
+  filter(decay == tuning_ann_ara$decay) %>%
+  arrange(size) %>%
+  mutate(Series = "Arabica", .before = size)
+
+df_neurones_rob <- tuning_ann_rob$grille %>%
+  filter(decay == tuning_ann_rob$decay) %>%
+  arrange(size) %>%
+  mutate(Series = "Robusta", .before = size)
+
+df_neurones <- rbind(df_neurones_ara, df_neurones_rob)
+
+
+# ----------------------------------------------------------
+# DISPLAY TABLE
+# The decay column is dropped from the display since it is
+# constant within each variety block and already stated in the
+# pack_rows() label. Within each variety, the row with the lowest
+# validation MSE is bolded so the optimal neuron count is visible
+# at a glance. No colour is applied to the highlighted row, since
+# the green/red colour convention used elsewhere in this document
+# signals theoretical sign consistency, not a minimum value, and
+# green text would also be illegible against the Robusta block's
+# green row background.
+# ----------------------------------------------------------
+
+df_neurones <- df_neurones %>%
+  group_by(Series) %>%
+  mutate(est_minimum = mse_val == min(mse_val)) %>%
+  ungroup() %>%
+  mutate(mse_val = round(mse_val, 4))
+
+df_neurones %>%
+  select(size, mse_val) %>%
+  kable(caption   = paste0("ANN — validation MSE by number of hidden neurons ",
+                           "(decay fixed at each variety's selected value)"),
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Neurons", "Validation MSE (TSCV)")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = FALSE) %>%
+  row_spec(which(df_neurones$est_minimum), bold = TRUE) %>%
+  row_spec(6, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica (decay = 0.1)", 1, 6,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta (decay = 0.001)", 7, 12,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec")
+```
+
+Isolating the effect of neuron count alone, at each variety's selected decay, tells a clearer story than the aggregate tuning search does on its own. 
+
+For Arabica, the relationship is essentially flat and mildly monotonic: validation MSE rises smoothly from 0.0353 at 2 neurons to 0.0359 at 15, a difference small enough to suggest the network is not particularly sensitive to width once decay is properly tuned, and the compact 2-neuron architecture is chosen mainly because it is marginally better rather than dramatically so.
+
+Robusta behaves quite differently. Validation MSE jumps more than fourfold between 2 neurons (0.0450) and 3 (0.1832), the single largest deviation anywhere in either grid, before falling back down through 5, 8, 10 and 15 neurons without ever recovering to the 2-neuron level. This is not the smooth, monotonic degradation seen for Arabica; it looks more like an isolated instability at one specific width, plausibly a poor local optimum reached during training at that particular size and decay combination, given that `nnet`'s weight initialisation is random and its optimiser offers no guarantee of finding the global minimum on a non-convex loss surface. The 2-neuron architecture remains the best choice for Robusta regardless, but the size of the gap to its nearest neighbour should be read with some caution rather than as evidence that odd numbers of neurons are inherently worse than even ones.
+
+*With the number of neurons confirmed at 2 for both varieties and decay fixed at its selected value, the ANN is now estimated under the full walk-forward protocol. This chunk mirrors the structure of every other model in this analysis: the size and decay hyperparameters are drawn from the tuning results above, separately for each coffee variety. At each step of the walk-forward loop, the network is reinitialised and retrained from scratch on all observations available up to that point, and a single one-step-ahead forecast is generated for the next unseen observation. L2 regularisation is applied via the decay parameter to reduce overfitting risk on the small training samples available for each series.*
 
 ```{r ann, message=FALSE, warning=FALSE}
 
@@ -5561,7 +5640,7 @@ One trade-off is worth flagging before looking at the results. `neuralnet` has n
 
 library(neuralnet)
 
-# Depth configurations to test, as requested by the supervisor.
+# Depth configurations to test.
 # Width is held fixed at 2 neurons per layer across all three
 # depths, so that any performance difference observed between
 # configurations reflects depth alone, not a confound between
@@ -6007,13 +6086,342 @@ df_ann_depth_decay %>%
             background = "#e8f5ec")
 ```
 
-Adding weight decay through `RSNNS::mlp()` was intended to test whether regularisation restores some of the performance lost at depth, using the same decay values already selected for the single-layer baseline, 0.1 for Arabica and 0.001 for Robusta. The results do not support this. Every decayed configuration underperforms its undecayed `neuralnet` counterpart at the same depth, and by a wide margin: Arabica falls to $R^2$ values of −1.206, −1.054- and −1.220 at 2, 5 and 10 layers respectively, while Robusta falls to −0.423, −0.264 and −0.367. Rather than narrowing the gap with the single-layer baseline, adding decay widens it substantially.
+Adding weight decay through `RSNNS::mlp()` was intended to test whether regularisation restores some of the performance lost at depth, using the same decay values already selected for the single-layer baseline, 0.1 for Arabica and 0.001 for Robusta. The results do not support this. Every decayed configuration underperforms its undecayed `neuralnet` counterpart at the same depth, and by a wide margin: Arabica falls to $R^2$ values of −1.206, −1.054 and −1.220 at 2, 5 and 10 layers respectively, while Robusta falls to −0.423, −0.264 and −0.367. As with the undecayed depth comparison earlier in this section, a negative $R^2$ means the model performs worse than simply predicting the mean of the test period; here, every single decayed configuration falls into that category, and several do so by a wider margin than the worst undecayed network. Rather than narrowing the gap with the single-layer baseline, adding decay widens it substantially.
 
-This outcome most likely reflects a methodological confound rather than a genuine effect of weight decay. Gaining access to `BackpropWeightDecay` required switching from `neuralnet` to `RSNNS`, and the two packages differ not only in their support for regularisation but in their default training algorithm. `neuralnet` trains by resilient backpropagation (Rprop+), an adaptive method whose step size is adjusted per weight and typically converges efficiently even on small samples. `BackpropWeightDecay`, by contrast, is a variant of standard gradient descent with a fixed learning rate, a considerably less efficient optimiser that generally requires more iterations to reach a comparable solution. This difficulty is compounded by the sigmoid activation shared by both packages: `BackpropWeightDecay`'s fixed-step updates have no mechanism to compensate for a gradient that is already shrinking with depth, unlike Rprop+, which adapts to the sign rather than the magnitude of the gradient and is comparatively more robust to this effect. The 500-iteration budget carried over unchanged from the `neuralnet` specification was calibrated for the faster of the two algorithms, and is plausibly insufficient for the slower one, particularly on the deeper architectures tested here. The RSNNS results are therefore better read as evidence of under-optimisation than as evidence against the value of regularisation at depth.
+This outcome most likely reflects a methodological confound rather than a genuine effect of weight decay. Gaining access to `BackpropWeightDecay` required switching from `neuralnet` to `RSNNS`, and the two packages differ not only in their support for regularisation but in their default training algorithm. `neuralnet` trains by resilient backpropagation (Rprop+), an adaptive method whose step size is adjusted per weight and typically converges efficiently even on small samples. `BackpropWeightDecay`, by contrast, is a variant of standard gradient descent with a fixed learning rate, a considerably less efficient optimiser that generally requires more iterations to reach a comparable solution. This difficulty is compounded by the sigmoid activation shared by both packages: `BackpropWeightDecay`'s fixed-step updates have no mechanism to compensate for a gradient that is already shrinking with depth, unlike Rprop+, which adapts to the sign rather than the magnitude of the gradient and is comparatively more robust to this effect. The 500-iteration budget carried over unchanged from the `neuralnet` specification was calibrated for the faster of the two algorithms, and is plausibly insufficient for the slower one, particularly on the deeper architectures tested here. The RSNNS results are therefore better read as evidence of under-optimisation than as evidence against the value of regularisation at depth. Future work could test whether tuning the learning rate (`eta`) for `BackpropWeightDecay`, or extending the iteration budget specifically for this optimiser, resolves the convergence issues observed here, rather than concluding that weight decay itself is unhelpful at depth.
 
-The RSNNS results are therefore better read as evidence of under-optimisation than as evidence against the value of regularisation at depth.
+### ANN Activation Function (`neuralnet`)
+
+Every ANN specification estimated so far, whether one layer or several, has used `nnet` and `neuralnet`'s shared default: the logistic (sigmoid) function, $\sigma(x) = 1/(1+e^{-x})$, which squashes its input into the $(0,1)$ range. This is one of two activation functions `neuralnet` supports natively without requiring a custom function definition, the other being the hyperbolic tangent, $\tanh(x) = (e^x - e^{-x})/(e^x + e^{-x})$, which squashes its input into $(-1,1)$ instead. ReLU and other piecewise-linear activations are not available in `neuralnet` without writing and differentiating a custom activation function by hand, and `RSNNS`, the package that does offer a wider range of activations, was already shown earlier in this section to introduce convergence problems of its own; this comparison is therefore restricted to sigmoid and tanh, tested within the same package and optimiser already used for every other ANN result in this document, so that any difference observed reflects the activation function itself rather than a confound with a different training algorithm.
+
+The choice between the two is not purely cosmetic. Tanh is zero-centred while sigmoid is not, which in principle produces more balanced gradient updates during backpropagation: a sigmoid-activated neuron's output is always positive, so the gradient with respect to any weight feeding into it is always the same sign as the error signal, which can slow convergence in a zig-zagging pattern. Tanh's steeper derivative, with a maximum value of 1 compared to sigmoid's 0.25, also means less of the gradient is lost at each layer it passes through, the same vanishing-gradient mechanism already flagged as a likely contributor to the collapse observed at greater depth earlier in this section. At the single-layer, two-neuron architecture tested here, this difference is expected to matter less than it did across ten stacked layers, but it is still worth testing directly rather than assuming sigmoid remains the better default.
+
+*This chunk defines the walk-forward estimation function for a single-hidden-layer ANN with a configurable activation function, mirroring `fit_ann_multilayer()` from the depth comparison above with the hidden layer fixed at 2 neurons, the architecture confirmed optimal earlier in this section. It then runs both activation functions, sigmoid and tanh, for both coffee varieties, four walk-forward estimations in total.*
+
+```{r ann_activation_run, message=FALSE, warning=FALSE, results='hide'}
+
+library(neuralnet)
+
+
+# ----------------------------------------------------------
+# WALK-FORWARD ESTIMATION FUNCTION — ANN WITH CONFIGURABLE
+# ACTIVATION FUNCTION
+# Mirrors fit_ann_multilayer() from the depth comparison above,
+# with the hidden layer fixed at a single layer of 2 neurons
+# (the architecture confirmed optimal earlier in this section)
+# and act.fct exposed as an argument so the same function can
+# be called with "logistic" or "tanh".
+# ----------------------------------------------------------
+
+fit_ann_activation <- function(df, var_dep, n_train, act_fct) {
+
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder        <- c(var_dep, vars_exo_disponibles)
+  df_modele            <- df[, vars_a_garder]
+
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  formule <- as.formula(paste(var_dep, "~",
+                              paste(vars_exo_disponibles, collapse = " + ")))
+
+  predictions <- numeric(n_test)
+
+  set.seed(42)
+
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues  <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    modele_nn <- tryCatch(
+      neuralnet(formule, data = fenetre_entrainement,
+               hidden        = 2,
+               act.fct       = act_fct,
+               linear.output = TRUE,
+               stepmax       = 1e6,
+               threshold     = 0.05),
+      error = function(e) NULL
+    )
+
+    if (is.null(modele_nn)) {
+      predictions[i] <- NA
+      next
+    }
+
+    ligne_a_predire <- donnees_test[i, vars_exo_disponibles, drop = FALSE]
+    predictions[i]  <- as.numeric(predict(modele_nn, newdata = ligne_a_predire))
+  }
+
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
+}
+
+
+# ----------------------------------------------------------
+# RUN — SIGMOID AND TANH, BOTH VARIETIES
+# ----------------------------------------------------------
+
+cat("Running sigmoid activation - Arabica...\n")
+res_activation_sigmoid_ara <- fit_ann_activation(
+  df_arabica_levels, "arabica_price", n_train_ara_lev, act_fct = "logistic")
+
+cat("Running tanh activation - Arabica...\n")
+res_activation_tanh_ara <- fit_ann_activation(
+  df_arabica_levels, "arabica_price", n_train_ara_lev, act_fct = "tanh")
+
+cat("Running sigmoid activation - Robusta...\n")
+res_activation_sigmoid_rob <- fit_ann_activation(
+  df_robusta_levels, "robusta_price", n_train_rob_lev, act_fct = "logistic")
+
+cat("Running tanh activation - Robusta...\n")
+res_activation_tanh_rob <- fit_ann_activation(
+  df_robusta_levels, "robusta_price", n_train_rob_lev, act_fct = "tanh")
+```
+
+*This chunk compiles the four walk-forward results into a single comparison table, grouped by variety with `pack_rows()`, consistent with the other comparison tables in this analysis.*
+
+```{r ann_activation_table, message=FALSE, warning=FALSE}
+
+df_activation_comparison <- rbind(
+  cbind(Series = "Arabica", Activation = "Sigmoid (logistic)",
+        calculer_metriques(res_activation_sigmoid_ara$actual, res_activation_sigmoid_ara$predicted)),
+  cbind(Series = "Arabica", Activation = "Tanh",
+        calculer_metriques(res_activation_tanh_ara$actual, res_activation_tanh_ara$predicted)),
+  cbind(Series = "Robusta", Activation = "Sigmoid (logistic)",
+        calculer_metriques(res_activation_sigmoid_rob$actual, res_activation_sigmoid_rob$predicted)),
+  cbind(Series = "Robusta", Activation = "Tanh",
+        calculer_metriques(res_activation_tanh_rob$actual, res_activation_tanh_rob$predicted))
+)
+
+df_activation_comparison %>%
+  select(Activation, R2, MSE, MAE) %>%
+  kable(caption   = "ANN — sigmoid vs tanh activation function (1 layer, 2 neurons, unregularised)",
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Activation", "R²", "MSE", "MAE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = TRUE) %>%
+  row_spec(2, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 2,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 3, 4,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec")
+```
+
+The results do not point to a single winner across both varieties. For Arabica, tanh outperforms sigmoid ($R^2$ = 0.618 vs 0.577), consistent with the zero-centred, steeper-derivative rationale outlined above: better-conditioned gradients translate into a modest but real improvement over the sigmoid default. For Robusta, the direction reverses: sigmoid outperforms tanh ($R^2$ = 0.334 vs 0.288), the opposite of what the gradient-flow argument alone would predict.
+
+Two things are worth keeping in mind before reading too much into this reversal. **First**, both specifications here are unregularised, `neuralnet` offers no decay mechanism, so both numbers sit well below the tuned, regularised baseline reported earlier in this section (0.728 for Arabica, 0.456 for Robusta); the comparison isolates the activation function only, and should not be read as a claim about the best achievable ANN specification for either series. **Second**, sigmoid and tanh differ not just in gradient behaviour but in output range, and at only two hidden neurons, the network has very little redundancy to fall back on if either activation happens to saturate on a handful of extreme input values during a particular walk-forward window, especially given Robusta's shorter, more volatile training sample. The theoretical advantage of tanh is real, but with this little capacity, the outcome for a specific series and specific random weight initialisation can still go either way. What the comparison does establish is that the choice of activation function is not neutral: the gap between the two ranges from 0.041 to 0.045 in $R^2$ for both varieties, comparable in size to some of the gains obtained from more heavily engineered changes elsewhere in this analysis, so it is a lever worth documenting explicitly rather than leaving at its untested default.
+
+### ANN Activation Function with L2 Regularisation (`keras`)
+
+The comparison above isolates the effect of the activation function on its own, but leaves open a natural follow-up question: does the direction of that effect survive once regularisation is added back in? `neuralnet` cannot answer this, since it has no weight decay mechanism. This section uses `keras3`, via `reticulate`, which supports both a configurable activation function and L2 regularisation on the same layer, to test all four combinations of activation (sigmoid, tanh) and regularisation (none, L2 penalty of 0.01) at the same 1-layer, 2-neuron architecture used throughout this section, with the Adam optimiser rather than the less robust fixed-step gradient descent that produced the inconclusive `RSNNS` results earlier in this document.
+
+*This chunk defines a walk-forward estimation function for a single-hidden-layer Keras network, with activation function and L2 penalty exposed as arguments, then runs all four combinations for both coffee varieties. Each network is rebuilt from scratch at every walk-forward step, consistent with every other model in this document; Keras's own random weight initialisation is seeded via `tensorflow::set_random_seed()` for reproducibility. Each network trains for up to 200 epochs, with early stopping halting training after 10 consecutive epochs without improvement in training loss, restoring the weights from the best epoch observed rather than the final one.*
+
+```{r ann_keras_setup, message=FALSE, warning=FALSE}
+
+library(keras3)
+library(tensorflow)
+
+# ----------------------------------------------------------
+# ANN VIA KERAS — ACTIVATION FUNCTION x L2 REGULARISATION
+# keras3 supports both a configurable activation function per layer
+# and L2 weight regularisation simultaneously, closing the gap left
+# by neuralnet (no regularisation) and RSNNS (regularisation
+# available but with an under-optimising fixed-step gradient
+# descent algorithm, as documented in the depth comparison earlier
+# in this section). Keras's default Adam optimiser is adaptive,
+# similar in spirit to neuralnet's Rprop+, avoiding the
+# under-optimisation problem encountered with RSNNS.
+# ----------------------------------------------------------
+
+
+# ----------------------------------------------------------
+# WALK-FORWARD ESTIMATION FUNCTION — KERAS ANN
+#
+# Arguments:
+#   df           : levels dataset (one row per month)
+#   var_dep      : name of the dependent variable column
+#   n_train      : size of the initial training window
+#   activation   : "sigmoid" or "tanh"
+#   l2_penalty   : L2 regularisation strength; 0 disables it
+#
+# What the function returns:
+#   actual    : the observed (scaled) prices in the test period
+#   predicted : the walk-forward one-step-ahead forecasts
+# ----------------------------------------------------------
+
+fit_ann_keras <- function(df, var_dep, n_train, activation, l2_penalty = 0) {
+
+  vars_exo_disponibles <- intersect(vars_exo, colnames(df))
+  vars_a_garder         <- c(var_dep, vars_exo_disponibles)
+  df_modele              <- df[, vars_a_garder]
+
+  df_modele_scaled <- as.data.frame(sapply(df_modele, minmax_scale))
+
+  n_total       <- nrow(df_modele_scaled)
+  donnees_train <- df_modele_scaled[1:n_train, ]
+  donnees_test  <- df_modele_scaled[(n_train + 1):n_total, ]
+  n_test        <- nrow(donnees_test)
+
+  predictions <- numeric(n_test)
+
+  for (i in 1:n_test) {
+
+    nb_lignes_test_vues  <- i - 1
+    lignes_test_vues     <- donnees_test[seq_len(nb_lignes_test_vues), ]
+    fenetre_entrainement <- rbind(donnees_train, lignes_test_vues)
+
+    x_train <- as.matrix(fenetre_entrainement[, vars_exo_disponibles])
+    y_train <- as.matrix(fenetre_entrainement[[var_dep]])
+
+    tensorflow::set_random_seed(42)
+
+    # STEP — build the model layer by layer.
+    modele_keras <- keras_model_sequential() %>%
+      layer_dense(
+        units              = 2,
+        activation         = activation,
+        kernel_regularizer = if (l2_penalty > 0) regularizer_l2(l2_penalty) else NULL,
+        input_shape        = ncol(x_train)
+      ) %>%
+      layer_dense(units = 1, activation = "linear")
+
+    # STEP — compile, model passed as a named argument (object = )
+    # for compatibility with keras3's stricter API.
+    compile(
+      object    = modele_keras,
+      optimizer = optimizer_adam(),
+      loss      = "mse"
+    )
+
+    # STEP — early stopping: training halts once the training loss
+    # fails to improve for 10 consecutive epochs (patience = 10),
+    # restoring the weights from the best epoch observed. A hard
+    # cap of 200 epochs is retained as an upper bound in case
+    # convergence has not triggered early stopping by then.
+    early_stop <- callback_early_stopping(
+      monitor              = "loss",
+      patience             = 10,
+      restore_best_weights = TRUE
+    )
+
+    fit(
+      object    = modele_keras,
+      x         = x_train,
+      y         = y_train,
+      epochs    = 200,
+      callbacks = list(early_stop),
+      verbose   = 0
+    )
+
+    ligne_a_predire <- as.matrix(donnees_test[i, vars_exo_disponibles, drop = FALSE])
+    predictions[i]  <- as.numeric(predict(modele_keras, ligne_a_predire, verbose = 0))
+  }
+
+  valeurs_observees <- donnees_test[[var_dep]]
+  list(actual = valeurs_observees, predicted = predictions)
+}
+```
+
+*This chunk runs all four activation/regularisation combinations for both coffee varieties, eight walk-forward estimations in total.*
+
+```{r ann_keras_run, message=FALSE, warning=FALSE, results='hide'}
+
+configs_keras <- list(
+  "Sigmoid, no L2" = list(activation = "sigmoid", l2_penalty = 0),
+  "Sigmoid, L2"    = list(activation = "sigmoid", l2_penalty = NA),  # filled per variety below
+  "Tanh, no L2"    = list(activation = "tanh", l2_penalty = 0),
+  "Tanh, L2"       = list(activation = "tanh", l2_penalty = NA)
+)
+
+# ----------------------------------------------------------
+# L2 penalty for the regularised configurations reuses the decay
+# value already selected by TSCV for the single-layer ANN earlier
+# in this section (tuning_ann_ara$decay = 0.1, tuning_ann_rob$decay
+# = 0.001), for consistency with the RSNNS depth comparison, which
+# reused the same values.
+# ----------------------------------------------------------
+
+l2_ara <- tuning_ann_ara$decay   # 0.1
+l2_rob <- tuning_ann_rob$decay   # 0.001
+
+resultats_keras_ara <- list()
+resultats_keras_rob <- list()
+
+for (nom_config in names(configs_keras)) {
+
+  cfg <- configs_keras[[nom_config]]
+
+  l2_val_ara <- if (is.na(cfg$l2_penalty)) l2_ara else cfg$l2_penalty
+  l2_val_rob <- if (is.na(cfg$l2_penalty)) l2_rob else cfg$l2_penalty
+
+  cat("Running", nom_config, "- Arabica...\n")
+  resultats_keras_ara[[nom_config]] <- fit_ann_keras(
+    df_arabica_levels, "arabica_price", n_train_ara_lev,
+    activation = cfg$activation, l2_penalty = l2_val_ara)
+
+  cat("Running", nom_config, "- Robusta...\n")
+  resultats_keras_rob[[nom_config]] <- fit_ann_keras(
+    df_robusta_levels, "robusta_price", n_train_rob_lev,
+    activation = cfg$activation, l2_penalty = l2_val_rob)
+}
+```
+
+*This chunk compiles the eight results into a single comparison table, grouped by variety.*
+
+```{r ann_keras_table, message=FALSE, warning=FALSE}
+
+construire_bloc_keras <- function(nom_serie, res_list) {
+  do.call(rbind, lapply(names(res_list), function(nom) {
+    data.frame(Configuration = nom,
+               calculer_metriques(res_list[[nom]]$actual, res_list[[nom]]$predicted))
+  })) %>% mutate(Series = nom_serie, .before = Configuration)
+}
+
+df_keras_comparison <- rbind(
+  construire_bloc_keras("Arabica", resultats_keras_ara),
+  construire_bloc_keras("Robusta", resultats_keras_rob)
+)
+
+df_keras_comparison %>%
+  select(Configuration, R2, MSE, MAE) %>%
+  kable(caption   = "ANN (Keras) — activation function x L2 regularisation (1 layer, 2 neurons)",
+        booktabs  = TRUE, row.names = FALSE,
+        col.names = c("Configuration", "R²", "MSE", "MAE")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                font_size = 11, full_width = TRUE) %>%
+  row_spec(4, extra_css = "border-bottom: 2px solid #333;") %>%
+  pack_rows("Arabica", 1, 4,
+            bold       = TRUE,
+            color      = "#8B4513",
+            background = "#f5ece6") %>%
+  pack_rows("Robusta", 5, 8,
+            bold       = TRUE,
+            color      = "#2E8B57",
+            background = "#e8f5ec")
+```
+
+The regularised specifications are uniformly worse than their unregularised counterparts here, the opposite of what the tuned single-layer ANN showed earlier in this section. For Arabica, tanh without L2 reaches $R^2$ = 0.712, the strongest result in the table, while adding L2 at 0.1 drops it to 0.394. Sigmoid fares even worse and never recovers: $R^2$ = $-0.217$ without L2 and $-0.235$ with it, both negative regardless of regularisation. For Robusta, the same pattern holds at a smaller scale: tanh without L2 reaches 0.522, falling to 0.487 with L2, and sigmoid falls from 0.223 to 0.213.
+
+This is not a contradiction of the earlier finding that decay improved the tuned ANN substantially (from 0.453 to 0.728 for Arabica), but a difference in training regime. The tuned `nnet` specification trains to convergence via a fixed-step full-batch procedure with no early stopping, so weight decay was doing necessary work: without it, the network kept fitting noise for as long as training continued. The Keras specification here already includes early stopping, which halts training as soon as further epochs stop improving the loss, providing a form of implicit regularisation on its own. Adding an explicit L2 penalty on top of that likely does what regularisation always risks doing when applied to a model that is not actually overfitting: it introduces additional bias without a corresponding reduction in variance, since early stopping had already contained the variance problem the penalty was designed to address.
+
+Comparing this table to the sigmoid-versus-tanh comparison run earlier in `neuralnet` also shows that the specific $R^2$ values, and even the ranking between activations, are sensitive to the choice of package and optimiser rather than reflecting a stable property of the activation function alone. `neuralnet`'s Rprop+ optimiser found sigmoid mildly preferable to tanh for Robusta (0.334 vs 0.288); Keras's Adam optimiser, with early stopping, finds the reverse (0.223 vs 0.522). For Arabica, both packages agree that tanh outperforms sigmoid, but by a very different margin (0.041 in `neuralnet`, closer to 0.9 in Keras, driven mainly by sigmoid's collapse to a negative $R^2$ here). Taken together, these results confirm that the choice of activation function matters, consistent with the earlier comparison, but they also show that the size and even the direction of that effect cannot be separated cleanly from the optimiser and training procedure used to fit the network, a limitation worth stating plainly rather than picking whichever package's ranking looks most convincing.
+
+The most interesting takeaway from comparing the two activation tests is that the direction and size of the effect depend on the package and optimiser used, not on the activation function alone. `neuralnet`'s Rprop+ optimiser and Keras's Adam optimiser do not agree on which activation performs better for Robusta. This is worth stating plainly rather than presenting either result as the definitive answer: the choice of activation function matters, but its effect cannot be cleanly separated from the training procedure used to fit the network.
 
 ## Comparative Performance Analysis
+
+Having estimated all six models separately in the preceding sections, this section brings their results together directly, so the relative strengths and weaknesses of each approach can be judged side by side rather than model by model. Two things matter here: how well each model performs on its own terms, and how consistently it performs across the two coffee varieties, since a model that works well for Arabica but falls apart for Robusta reveals something about its assumptions that a single-variety result alone would hide.
 
 *This chunk consolidates the six individual metric data frames into a single comparison table and produces the summary bar chart. The metric columns are coerced to numeric here because `cbind()` in the individual model chunks stores them as character strings when binding with the Model and Series label columns. Two separate tables are rendered, one per coffee variety, to keep each readable, followed by a grouped bar chart that allows visual comparison of $R^2$ across all model-variety combinations simultaneously.*
 
@@ -6108,9 +6516,11 @@ metriques_all %>%
         panel.grid.major.x = element_blank())
 ```
 
-The results tell a fairly clear story. ARIMAX is the strongest model overall, particularly for Robusta where it reaches an $R^2$ of 0.929, and remains very competitive for Arabica at 0.821. Among the ML models, SVM, XGBoost and Random Forest are almost indistinguishable for Arabica, with $R^2$ values of 0.813, 0.812 and 0.811 respectively, which suggests that the three approaches are drawing on largely the same information from the predictor set. MLR holds up reasonably well for Arabica at 0.784 but breaks down for Robusta at 0.276, confirming that a static linear model without temporal dynamics is not well suited to that series. The ANN improves substantially over the baseline thanks to L2 regularisation, but at 0.728 for Arabica and 0.456 for Robusta it remains the weakest of the six models.
+The results tell a different story now than they used to, mainly because of ARIMAX. Fixing its order rather than letting it re-select at every walk-forward step lifted its Arabica performance sharply, to an $R^2$ of 0.955, ahead of Robusta at 0.926, the reverse of the earlier ranking, where Robusta led. ARIMAX is now clearly the strongest model for both varieties, and by a wide enough margin over everything else that it isn't a close call.
 
-The walk-forward validation protocol ensures that all reported metrics reflect genuine out-of-sample forecasting ability, with no possibility of data leakage between the training and test periods. The majority of models achieve $R^2$ values above 0.75, with the notable exceptions of ANN for both varieties, Random Forest for Robusta and MLR for Robusta, reflecting the structural challenges of forecasting a shorter and more volatile series on a limited training sample.
+Among the machine learning models, XGBoost, SVM and Random Forest sit close together for Arabica, all around 0.81, which suggests the three are picking up much the same signal from the predictor set rather than exploiting genuinely different information. Robusta pulls them apart: XGBoost holds up best at 0.797, SVM follows at 0.761, and Random Forest falls further behind at 0.676. MLR does reasonably well for Arabica (0.784) but collapses for Robusta (0.276), the clearest sign anywhere in this comparison that a model with no temporal structure struggles once the sample gets short and the predictors get collinear. The ANN remains the weakest model for both varieties, at 0.728 and 0.456, even after regularisation.
+
+Because every one of these figures comes from the same walk-forward protocol, with no model ever trained on data it is later asked to predict, the comparison is a fair one: the differences in $R^2$ reflect genuine differences in forecasting ability, not differences in how generously each model was tested. Most models clear the 0.75 threshold marked on the chart, with four exceptions: MLR and Random Forest for Robusta, and the ANN for both varieties, a pattern consistent with what the rest of this document already suggests about which models handle a shorter, more volatile series well and which don't.
 
 ### Variable Importance and Partial Dependence Plots
 
@@ -6176,31 +6586,20 @@ actual_rob    <- test_rob[["robusta_price"]]
 modele_mlr_ara <- lm(arabica_price ~ ., data = train_ara)
 modele_mlr_rob <- lm(robusta_price ~ ., data = train_rob)
 
-# ARIMAX
-# auto.arima() requires unscaled data and the regressor
-# matrix separately. The model is fitted on the unscaled
-# training series with the scaled regressors, consistent
-# with the main ARIMAX chunk.
+# ARIMAX — reuse the fixed-order reference model already fitted in
+# the main ARIMAX chunk (res_arimax_ara$model, res_arimax_rob$model),
+# rather than re-fitting with auto.arima() here. auto.arima() with
+# narrow search bounds would produce a different order than the one
+# actually used for the walk-forward results reported elsewhere in
+# this document, so reusing the reference model keeps the
+# permutation importance scores consistent with those results.
 xreg_train_ara <- as.matrix(train_ara[, vars_exo_ara])
 xreg_test_ara  <- as.matrix(test_ara[,  vars_exo_ara])
 xreg_train_rob <- as.matrix(train_rob[, vars_exo_rob])
 xreg_test_rob  <- as.matrix(test_rob[,  vars_exo_rob])
 
-modele_arimax_ara <- auto.arima(
-  df_arabica_levels$arabica_price[1:n_train_ara_lev],
-  xreg          = as.matrix(df_arabica_levels[1:n_train_ara_lev, vars_exo_ara]),
-  stepwise      = TRUE,
-  approximation = TRUE,
-  max.p = 3, max.q = 3, max.d = 1
-)
-
-modele_arimax_rob <- auto.arima(
-  df_robusta_levels$robusta_price[1:n_train_rob_lev],
-  xreg          = as.matrix(df_robusta_levels[1:n_train_rob_lev, vars_exo_rob]),
-  stepwise      = TRUE,
-  approximation = TRUE,
-  max.p = 3, max.q = 3, max.d = 1
-)
+modele_arimax_ara <- res_arimax_ara$model
+modele_arimax_rob <- res_arimax_rob$model
 
 # Random Forest
 set.seed(42)
