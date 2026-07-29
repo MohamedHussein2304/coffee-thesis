@@ -5455,7 +5455,7 @@ df_neurones <- rbind(df_neurones_ara, df_neurones_rob)
 # pack_rows() label. Within each variety, the row with the lowest
 # validation MSE is bolded so the optimal neuron count is visible
 # at a glance. No colour is applied to the highlighted row, since
-# the green/red colour convention used elsewhere in this document
+# the green/red colour convention used in this document.
 # signals theoretical sign consistency, not a minimum value, and
 # green text would also be illegible against the Robusta block's
 # green row background.
