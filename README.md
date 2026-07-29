@@ -78,9 +78,14 @@ There's a lot more in the actual document: four robustness checks (disaggregated
 
 The full analysis is available at: https://mohamedhussein2304.github.io/coffee-thesis/Mémoire_de_Master_Quarto.html
 
-## Reproducibility
+## Reproducibility notes
 
-*(CI badge once GitHub Actions is set up — checks the code runs on Windows, macOS and Ubuntu)*
+This analysis was developed and tested on Windows, using RStudio. Beyond the R packages listed above, two chunks depend on a working Python setup via `reticulate`:
+
+- A dedicated virtual environment (`r-tensorflow`) is used for the Keras/TensorFlow-based ANN comparison and for the scikit-learn-based Random Forest pruning check.
+- If you're setting this up from scratch, you'll need `reticulate::py_install("scikit-learn", envname = "r-tensorflow")` in addition to whatever TensorFlow/Keras setup `keras3` already requires.
+
+No automated cross-platform CI is currently set up for this repository; the full walk-forward pipeline (six models, ~40 steps each, several robustness checks) is computationally heavy enough that running it end-to-end on every push wasn't worth the setup cost for a thesis project. If you run into environment issues reproducing a specific section, the corresponding chunk in the `.qmd` is the best place to start.
 
 ## Citing this
 
