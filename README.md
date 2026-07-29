@@ -76,7 +76,7 @@ There's a lot more in the actual document: four robustness checks (disaggregated
 
 ## Read the analysis online
 
-*(link once GitHub Pages is set up)*
+The full analysis is available at: https://mohamedhussein2304.github.io/coffee-thesis/Mémoire_de_Master_Quarto.html
 
 ## Reproducibility
 
