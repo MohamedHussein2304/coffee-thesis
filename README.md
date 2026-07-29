@@ -1,134 +1,94 @@
-# Coffee Futures Price Forecasting — Master's Thesis
+# Predicting Arabica and Robusta Coffee Futures Prices
 
-**HEC Lausanne, University of Lausanne (UNIL) | 2026**  
-**Author:** Mohamed Hussein  
-**Supervisor:** M. Vialfont
+Master's thesis project, HEC Lausanne (University of Lausanne)
+Author: Mohamed Hussein · Supervisor: M. Vialfont
 
----
+## What this is
 
-## Overview
+This is my Master's thesis in Management (Business Analytics), where I compare six different models for forecasting monthly Arabica and Robusta coffee futures prices between 2000 and 2023. The idea is to see how two classic econometric approaches (Multiple Linear Regression and ARIMAX) stack up against four machine learning models (Random Forest, XGBoost, SVM, and a neural network), using a mix of macroeconomic data, USDA supply/demand fundamentals, climate variables, the ENSO/ONI index, and speculative positioning data from the CFTC.
 
-This repository contains the full empirical pipeline for my Master's thesis in Management (Business Analytics orientation) at HEC Lausanne. The study compares six forecasting models applied to monthly Arabica and Robusta coffee futures prices over the 2000–2023 period, using a rich predictor set spanning macroeconomic, climatic, fundamental and speculative determinants. All models are evaluated under a walk-forward expanding window validation protocol with an 80/20 train/test split.
+Models are evaluated out-of-sample with a walk-forward expanding window, so at every step the model only ever sees data it would have had access to at the time.
 
----
+## What's in this repo
 
-## View the Analysis
+- `Mémoire_de_Master_Quarto.qmd` — the whole analysis, from data cleaning to the final discussion. This is the main file.
+- `Mémoire_de_Master_Quarto.html` — the rendered version, if you just want to read the results without running anything.
+- `Mémoire_de_Master_Quarto_files/` — figures and assets Quarto generates when it renders the document.
+- `styles.css` — some custom styling for the HTML output.
 
-> **Note:** This repository is currently private pending thesis submission and oral defence. It will be made public following evaluation.
+The full thesis submitted to the faculty, including the literature review, is maintained separately as a PDF and is not part of this repository.
 
----
+## About the data
 
-## Results Summary
+I can't include the raw data here. Some of it (mainly the Refinitiv/CEDIF futures prices) is licensed and I'm not allowed to redistribute it, and the rest is just excluded to keep things clean. If you want to reproduce the analysis, here's where everything comes from:
 
-| Model | Arabica R² | Robusta R² |
-|-------|-----------|-----------|
-| ARIMAX | 0.821 | 0.929 |
-| XGBoost | 0.818 | 0.796 |
-| SVM (tuned) | 0.813 | 0.723 |
-| Random Forest | 0.811 | 0.695 |
+| Data | Source |
+|---|---|
+| Arabica, Robusta, Sugar No.1, Cocoa futures prices | Refinitiv (institutional access via CEDIF) |
+| CPI, WTI, Federal Funds Rate | FRED |
+| DXY (US Dollar Index) | Investing.com |
+| Production, Consumption, Exports, Ending Stocks | USDA FAS PSD Online |
+| Real GDP growth | OECD Data Explorer |
+| ONI / ENSO index | NOAA |
+| Temperature, Precipitation (ERA5, 0.25°, ADM1-level) | World Bank Climate Knowledge Portal |
+| Managed Money net positioning (COT) | CFTC Disaggregated Futures-Only reports |
+
+## Running this yourself
+
+You'll need R with these packages:
+
+- **Data import & wrangling**: `readxl`, `readr`, `dplyr`, `tidyr`, `tibble`, `lubridate`, `zoo`
+- **Visualization**: `ggplot2`, `corrplot`, `scales`, `gridExtra`, `ggrepel`, `ggh4x`
+- **Stationarity & diagnostics**: `tseries`, `urca`, `car`, `moments`, `broom`
+- **Models**: `forecast` (ARIMAX), `randomForest`, `xgboost`, `e1071` (SVM), `nnet`, `neuralnet`, `RSNNS`, `rpart` (CART), `glmnet` (LASSO/Ridge)
+- **Model evaluation**: `Metrics`
+- **Reporting**: `knitr`, `kableExtra`
+- **Text processing**: `tidytext`
+- **Python bridge**: `reticulate`, `keras3`
+
+Two parts of the analysis step outside base R:
+
+- The **ANN activation function comparison** uses `keras3` (via `reticulate`) to compare against `neuralnet`'s default optimiser.
+- The **Random Forest cost-complexity pruning** robustness check calls **scikit-learn** directly through `reticulate`, since R's `randomForest` has no direct `cp`-style parameter.
+
+Both require a working Python environment with the relevant packages (TensorFlow/Keras backend, scikit-learn) installed and accessible to `reticulate`.
+
+## How it's set up
+
+- Walk-forward validation with an 80/20 split, re-estimated at every step as the window expands.
+- ARIMAX's (p,d,q) order is chosen once on the initial training window and then held fixed for the rest of the loop, rather than re-selected at every step.
+- The ML models are trained on Min-Max scaled price levels, not first differences (differencing killed almost all predictive signal, see the discussion in the thesis for why).
+
+## Results
+
+Out-of-sample R² for each model:
+
+| Model | Arabica | Robusta |
+|---|---|---|
+| ARIMAX | 0.955 | 0.926 |
+| XGBoost | 0.812 | 0.797 |
+| SVM | 0.813 | 0.761 |
+| Random Forest | 0.815 | 0.676 |
 | MLR | 0.784 | 0.276 |
-| ANN | 0.453 | 0.441 |
+| ANN | 0.728 | 0.456 |
 
-All metrics are computed exclusively on the out-of-sample test set. MSE and MAE for ARIMAX and MLR are in original price units (USD/lb for Arabica, USD/tonne for Robusta); ML model metrics are on the Min-Max scaled [0, 1] range and are not directly comparable across model families.
+There's a lot more in the actual document: four robustness checks (disaggregated climate data, variety-specific predictors, GDP growth, lagged COT positioning), plus extra digging into ARIMAX order selection, Random Forest tuning and pruning, ANN depth and activation functions, and MLR regularisation.
 
----
+## Read the analysis online
 
-## Data Sources
+*(link once GitHub Pages is set up)*
 
-| Variable | Source |
-|----------|--------|
-| Arabica and Robusta futures prices | Refinitiv / CEDIF (UNIL) |
-| Sugar No.11 and Cocoa NY futures | Refinitiv / CEDIF (UNIL) |
-| WTI crude oil, CPI, Fed Funds Rate | FRED (Federal Reserve) |
-| US Dollar Index (DXY) | Investing.com |
-| Production, consumption, exports, ending stocks | USDA FAS PSD Online |
-| Managed Money net position | CFTC Disaggregated Futures-Only COT |
-| Temperature and precipitation (14 countries, ADM1) | World Bank CCKP (ERA5 0.25°) |
-| Oceanic Niño Index (ENSO) | NOAA |
-| OECD GDP growth (quarterly robustness check) | OECD Data Explorer |
+## Reproducibility
 
-> **Note:** Raw data files are excluded from this repository via `.gitignore` due to licensing restrictions. The pipeline expects data files in a local `Datasets mémoire de master/` folder.
+*(CI badge once GitHub Actions is set up — checks the code runs on Windows, macOS and Ubuntu)*
 
----
+## Citing this
 
-## Repository Structure
+> Hussein, M. (2026). *Predicting Arabica and Robusta Coffee Futures Prices: A Machine Learning Approach with Macroeconomic, Climatic, and Speculative Determinants* [Master's thesis, HEC Lausanne, University of Lausanne].
 
-```
-coffee-thesis/
-├── Mémoire_de_Master_Quarto_files/      # Auto-generated by Quarto render
-│   ├── figure-html/                     # ggplot2 output figures
-│   └── libs/                            # JavaScript libraries for HTML output
-├── .gitignore                           # Excluded files (logs, temp, project files)
-├── Mémoire_de_Master_Quarto.html        # Rendered HTML analysis (GitHub Pages)
-├── Mémoire_de_Master_Quarto.qmd         # Full Quarto source — data pipeline + models
-├── README.md                            # Project documentation
-└── styles.css                           # Custom CSS styling
-```
+## Questions
 
----
-
-## How to Reproduce
-
-### Prerequisites
-
-- R >= 4.2.0
-- RStudio >= 2023.x
-- Quarto >= 1.4
-
-### R Packages
-
-```r
-packages <- c(
-  "readxl", "dplyr", "tidyr", "lubridate", "zoo", "readr",
-  "ggplot2", "corrplot", "tseries", "urca", "forecast",
-  "scales", "gridExtra", "knitr", "kableExtra", "moments",
-  "ggrepel", "randomForest", "xgboost", "e1071", "nnet",
-  "Metrics", "tibble", "ggh4x"
-)
-install.packages(packages)
-```
-
-### Steps
-
-1. Clone this repository
-2. Place data files in `Datasets mémoire de master/` following the folder structure defined in the setup chunk of the `.qmd` file
-3. Open RStudio and set the working directory to the repository root
-4. Render the analysis:
-
-```bash
-quarto render Mémoire_de_Master_Quarto.qmd
-```
-
-> **Warning:** The full pipeline is computationally intensive. The walk-forward loops for Random Forest (500 trees × 43 steps × 2 series) and the robustness checks may take several minutes to complete on a standard laptop.
-
----
-
-## Models and Methodology
-
-Six forecasting models are estimated separately for Arabica and Robusta under a walk-forward expanding window protocol:
-
-| Model | Key specifications |
-|-------|-------------------|
-| ARIMAX | Order selected by `auto.arima()` at each step (max p=3, q=3, d=1) |
-| MLR | OLS on expanding window; levels specification |
-| Random Forest | 500 trees; permutation importance at final step |
-| XGBoost | 100 rounds, max_depth=4, eta=0.1, subsample=0.8 |
-| SVM | RBF kernel; cost and gamma via pre-loop grid search |
-| ANN | Single hidden layer (nnet); size via pre-loop grid search |
-
-Three robustness checks are included:
-
-1. **Disaggregated climate indices** — 28 individual national series replacing the 2 aggregated indices
-2. **Variety-specific specification** — Climate and supply variables restricted to variety-relevant producing countries
-3. **OECD GDP growth** — Quarterly frequency robustness check with GDP growth as an additional predictor
-
----
-
-## License
-
-This project is for academic purposes only. Data sources are subject to their respective licenses and terms of use. The code is freely available for academic reference.
-
----
+Feel free to open an issue or reach out directly.
 
 ## AI Assistance Declaration
 
