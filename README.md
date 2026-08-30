@@ -1,25 +1,37 @@
 # Predicting Arabica and Robusta Coffee Futures Prices
-
 Master's thesis project, HEC Lausanne (University of Lausanne)
+
 Author: Mohamed Hussein · Supervisor: M. Vialfont
 
 ## What this is
-
 This is my Master's thesis in Management (Business Analytics), where I compare six different models for forecasting monthly Arabica and Robusta coffee futures prices between 2000 and 2023. The idea is to see how two classic econometric approaches (Multiple Linear Regression and ARIMAX) stack up against four machine learning models (Random Forest, XGBoost, SVM, and a neural network), using a mix of macroeconomic data, USDA supply/demand fundamentals, climate variables, the ENSO/ONI index, and speculative positioning data from the CFTC.
 
 Models are evaluated out-of-sample with a walk-forward expanding window, so at every step the model only ever sees data it would have had access to at the time.
 
+**📖 Read the full analysis online: https://mohamedhussein2304.github.io/coffee-thesis/Mémoire_de_Master_Quarto.html**
+
 ## What's in this repo
 
-- `Mémoire_de_Master_Quarto.qmd` — the whole analysis, from data cleaning to the final discussion. This is the main file.
-- `Mémoire_de_Master_Quarto.html` — the rendered version, if you just want to read the results without running anything.
-- `Mémoire_de_Master_Quarto_files/` — figures and assets Quarto generates when it renders the document.
-- `styles.css` — some custom styling for the HTML output.
-
-The full thesis submitted to the faculty, including the literature review, is maintained separately as a PDF and is not part of this repository.
+```
+coffee-thesis/
+├── Mémoire_de_Master_Quarto_files/    # figures & assets Quarto generates on render
+├── images/                            # figures used in this README
+│   ├── forecast_arabica.png
+│   ├── forecast_robusta.png
+│   ├── importance_arabica.png
+│   ├── importance_robusta.png
+│   ├── pdp_arabica.png
+│   └── pdp_robusta.png
+├── .gitignore
+├── .nojekyll
+├── Master_Thesis_Mohamed_Hussein.pdf  # full thesis as submitted to the faculty
+├── Mémoire_de_Master_Quarto.html      # rendered version, read-only
+├── Mémoire_de_Master_Quarto.qmd       # main analysis (Quarto) — data cleaning to discussion
+├── README.md
+└── styles.css                         # custom styling for the HTML output
+```
 
 ## About the data
-
 I can't include the raw data here. Some of it (mainly the Refinitiv/CEDIF futures prices) is licensed and I'm not allowed to redistribute it, and the rest is just excluded to keep things clean. If you want to reproduce the analysis, here's where everything comes from:
 
 | Data | Source |
@@ -34,7 +46,6 @@ I can't include the raw data here. Some of it (mainly the Refinitiv/CEDIF future
 | Managed Money net positioning (COT) | CFTC Disaggregated Futures-Only reports |
 
 ## Running this yourself
-
 You'll need R with these packages:
 
 - **Data import & wrangling**: `readxl`, `readr`, `dplyr`, `tidyr`, `tibble`, `lubridate`, `zoo`
@@ -54,13 +65,11 @@ Two parts of the analysis step outside base R:
 Both require a working Python environment with the relevant packages (TensorFlow/Keras backend, scikit-learn) installed and accessible to `reticulate`.
 
 ## How it's set up
-
 - Walk-forward validation with an 80/20 split, re-estimated at every step as the window expands.
 - ARIMAX's (p,d,q) order is chosen once on the initial training window and then held fixed for the rest of the loop, rather than re-selected at every step.
 - The ML models are trained on Min-Max scaled price levels, not first differences (differencing killed almost all predictive signal, see the discussion in the thesis for why).
 
 ## Results
-
 Out-of-sample R² for each model:
 
 | Model | Arabica | Robusta |
@@ -72,14 +81,27 @@ Out-of-sample R² for each model:
 | MLR | 0.784 | 0.276 |
 | ANN | 0.728 | 0.456 |
 
+**Out-of-sample forecasts vs. actual prices:**
+
+| Arabica | Robusta |
+|---|---|
+| ![Arabica forecast](images/forecast_arabica.png) | ![Robusta forecast](images/forecast_robusta.png) |
+
+**Comparative variable importance across models:**
+
+| Arabica | Robusta |
+|---|---|
+| ![Arabica variable importance](images/importance_arabica.png) | ![Robusta variable importance](images/importance_robusta.png) |
+
+**Partial dependence for the top predictors:**
+
+| Arabica | Robusta |
+|---|---|
+| ![Arabica partial dependence](images/pdp_arabica.png) | ![Robusta partial dependence](images/pdp_robusta.png) |
+
 There's a lot more in the actual document: four robustness checks (disaggregated climate data, variety-specific predictors, GDP growth, lagged COT positioning), plus extra digging into ARIMAX order selection, Random Forest tuning and pruning, ANN depth and activation functions, and MLR regularisation.
 
-## Read the analysis online
-
-The full analysis is available at: https://mohamedhussein2304.github.io/coffee-thesis/Mémoire_de_Master_Quarto.html
-
 ## Reproducibility notes
-
 This analysis was developed and tested on Windows, using RStudio. Beyond the R packages listed above, two chunks depend on a working Python setup via `reticulate`:
 
 - A dedicated virtual environment (`r-tensorflow`) is used for the Keras/TensorFlow-based ANN comparison and for the scikit-learn-based Random Forest pruning check.
@@ -88,13 +110,10 @@ This analysis was developed and tested on Windows, using RStudio. Beyond the R p
 No automated cross-platform CI is currently set up for this repository; the full walk-forward pipeline (six models, ~40 steps each, several robustness checks) is computationally heavy enough that running it end-to-end on every push wasn't worth the setup cost for a thesis project. If you run into environment issues reproducing a specific section, the corresponding chunk in the `.qmd` is the best place to start.
 
 ## Citing this
-
-> Hussein, M. (2026). *Predicting Arabica and Robusta Coffee Futures Prices: A Machine Learning Approach with Macroeconomic, Climatic, and Speculative Determinants* [Master's thesis, HEC Lausanne, University of Lausanne].
+> Hussein, M. (2026). *Predicting Arabica and Robusta Coffee Futures Prices: An Econometric and Machine Learning Approach with Macroeconomic, Climatic, and Speculative Determinants* [Master's thesis, HEC Lausanne, University of Lausanne].
 
 ## Questions
-
 Feel free to open an issue or reach out directly.
 
 ## AI Assistance Declaration
-
 Claude (Anthropic) was used as an AI assistant during the development of this project, including support for writing and structuring the thesis text and for the design and debugging of the R data processing and modelling pipeline implemented in Quarto. All analytical decisions, interpretations, and written content remain the sole responsibility of the author.
